@@ -22,6 +22,9 @@
 #include "render/scene.h"
 #include "render/session.h"
 #include "render/integrator.h"
+#include "render/mesh.h"
+#include "render/nodes.h"
+#include "render/object.h"
 
 #include "util/util_args.h"
 #include "util/util_foreach.h"
@@ -40,6 +43,10 @@
 #endif
 
 #include "app/cycles_xml.h"
+
+#include "Importer.hpp"
+#include "scene.h"
+#include "postprocess.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -126,8 +133,56 @@ static BufferParams& session_buffer_params()
 	return buffer_params;
 }
 
-static void scene_init()
+static Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm)
 {
+	Mesh* mesh = new Mesh();
+	scene->meshes.push_back(mesh);
+
+	Object* object = new Object();
+	object->mesh = mesh;
+	object->tfm = tfm;
+	scene->objects.push_back(object);
+
+	return mesh;
+}
+
+static void assimp_read_file(Scene *scene, std::string filename)
+{
+	Assimp::Importer importer;
+	unsigned int flags = aiProcess_Triangulate |
+		aiProcess_JoinIdenticalVertices |
+		aiProcess_PreTransformVertices |
+		aiProcess_RemoveRedundantMaterials |
+		aiProcess_OptimizeMeshes |
+		aiProcess_FlipWindingOrder;
+	const aiScene* import_fbx_scene = importer.ReadFile(filename, flags);
+
+	if (import_fbx_scene == NULL)
+	{
+		std::string error_code = importer.GetErrorString();
+		std::cout << ("load fbx file failed! " + error_code) << std::endl;
+		return;
+	}
+
+	unsigned int mesh_num = import_fbx_scene->mNumMeshes;
+	unsigned int mat_num = import_fbx_scene->mNumMaterials;
+
+	//TODO: Create shader according mat_num
+	//
+
+	for (unsigned int mesh_i = 0; mesh_i < mesh_num; ++mesh_i)
+	{
+		aiMesh* mesh_ptr = import_fbx_scene->mMeshes[mesh_i];
+		unsigned int triangle_num = mesh_ptr->mNumFaces;
+		unsigned int vertex_num = mesh_ptr->mNumVertices;
+
+		Mesh* p_cy_mesh = fbx_add_mesh(scene, transform_identity());
+		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+	}
+}
+
+static void scene_init()
+{	
 	options.scene = new Scene(options.scene_params, options.session->device);
 
 	/* Read XML */
@@ -522,5 +577,6 @@ int main(int argc, const char **argv)
 	}
 #endif
 
+	system("pause");
 	return 0;
 }

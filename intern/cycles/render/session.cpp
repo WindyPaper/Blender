@@ -153,6 +153,7 @@ void Session::reset_gpu(BufferParams& buffer_params, int samples)
 	 * that only works in the main thread */
 	thread_scoped_lock display_lock(display_mutex);
 	thread_scoped_lock buffers_lock(buffers_mutex);
+	thread_scoped_lock tile_lock(tile_mutex);
 
 	display_outdated = true;
 	reset_time = time_dt();
@@ -207,7 +208,10 @@ void Session::run_gpu()
 
 	while(!progress.get_cancel()) {
 		/* advance to next tile */
+		//std::cout << "Enter tile lock " << std::endl;
+		thread_scoped_lock tile_lock(tile_mutex);
 		bool no_tiles = !tile_manager.next();
+		tile_lock.unlock();
 
 		if(params.background) {
 			/* if no work left and in background mode, we can stop immediately */

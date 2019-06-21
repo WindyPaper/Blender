@@ -49,9 +49,9 @@ extern struct DrawEngineType draw_engine_eevee_type;
 #define MAX_BLOOM_STEP 16
 
 /* Only define one of these. */
-// #define IRRADIANCE_SH_L2
+#define IRRADIANCE_SH_L2
 // #define IRRADIANCE_CUBEMAP
-#define IRRADIANCE_HL2
+// #define IRRADIANCE_HL2
 #define HAMMERSLEY_SIZE 1024
 
 #if defined(IRRADIANCE_SH_L2)

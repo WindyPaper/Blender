@@ -146,16 +146,174 @@ static Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm)
 	return mesh;
 }
 
-static void assimp_read_file(Scene *scene, std::string filename)
+static void create_default_shader(Scene* scene, const std::string &diffuse_tex)
 {
+	/* default surface */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		ImageTextureNode* img_node = new ImageTextureNode();
+		img_node->filename = diffuse_tex;
+		graph->add(img_node);
+
+		DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
+		diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+		graph->add(diffuse);
+
+		graph->connect(img_node->output("Color"), diffuse->input("Color"));
+
+		graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
+
+		Shader* shader = new Shader();
+		shader->name = "default_surface";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_surface = shader;
+	}
+
+	/* default light */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		EmissionNode* emission = new EmissionNode();
+		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+		emission->strength = 0.0f;
+		graph->add(emission);
+
+		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+
+		Shader* shader = new Shader();
+		shader->name = "default_light";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_light = shader;
+	}
+
+	/* default background */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_background";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_background = shader;
+	}
+
+	/* default empty */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_empty";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_empty = shader;
+	}
+}
+
+static void fbx_add_default_shader(Scene* scene, const std::string& diffuse_tex)
+{
+	/* default surface */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		UVMapNode* uv_node = new UVMapNode();
+		uv_node->attribute = ustring("UVMap");
+		//uv_node->from_dupli = true;
+		graph->add(uv_node);	
+
+		ImageTextureNode* img_node = new ImageTextureNode();
+		img_node->filename = diffuse_tex;
+		graph->add(img_node);
+
+		graph->connect(uv_node->output("UV"), img_node->input("Vector"));
+
+		DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
+		diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+		graph->add(diffuse);
+
+		graph->connect(img_node->output("Color"), diffuse->input("Color"));
+
+		graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
+
+		Shader* shader = new Shader();
+		shader->name = "default_surface";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_surface = shader;
+		shader->tag_update(scene);
+	}
+
+	/* default light */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		EmissionNode* emission = new EmissionNode();
+		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+		emission->strength = 0.0f;
+		graph->add(emission);
+
+		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+
+		Shader* shader = new Shader();
+		shader->name = "default_light";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_light = shader;
+	}
+
+	/* default background */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_background";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_background = shader;
+	}
+
+	/* default empty */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_empty";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_empty = shader;
+	}
+
+	ShaderGraph *gra = scene->default_background->graph;
+	BackgroundNode* bk_node = new BackgroundNode();
+	gra->add(bk_node);
+	gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
+
+	ColorNode* cb_node = new ColorNode();
+	cb_node->value = make_float3(0.8, 0.8, 0.8);
+	gra->add(cb_node);
+	gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+
+	ValueNode* v_node = new ValueNode();
+	v_node->value = 1.0;
+	gra->add(v_node);
+	gra->connect(v_node->output("Value"), bk_node->input("Strength"));
+}
+
+static void assimp_read_file(Scene *scene, std::string filename)
+{	
 	Assimp::Importer importer;
-	unsigned int flags = aiProcess_Triangulate |
+	unsigned int flags = aiProcess_MakeLeftHanded |
+		aiProcess_Triangulate |
 		aiProcess_JoinIdenticalVertices |
 		aiProcess_PreTransformVertices |
 		aiProcess_RemoveRedundantMaterials |
 		aiProcess_OptimizeMeshes |
 		aiProcess_FlipWindingOrder;
 	const aiScene* import_fbx_scene = importer.ReadFile(filename, flags);
+
+	fbx_add_default_shader(scene, "./cycles_scene/red.png");
 
 	if (import_fbx_scene == NULL)
 	{
@@ -166,6 +324,9 @@ static void assimp_read_file(Scene *scene, std::string filename)
 
 	unsigned int mesh_num = import_fbx_scene->mNumMeshes;
 	unsigned int mat_num = import_fbx_scene->mNumMaterials;
+
+	int shader = 0;
+	bool smooth = true;
 
 	//TODO: Create shader according mat_num
 	//
@@ -178,6 +339,48 @@ static void assimp_read_file(Scene *scene, std::string filename)
 
 		Mesh* p_cy_mesh = fbx_add_mesh(scene, transform_identity());
 		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+
+		const aiVector3D* aivertices_data = mesh_ptr->mVertices;
+		p_cy_mesh->verts.resize(vertex_num);
+
+		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+
+		for (int i = 0; i < vertex_num; ++i)
+		{
+			p_cy_mesh->verts[i] = make_float3(aivertices_data[i].x, aivertices_data[i].y, aivertices_data[i].z);			
+		}		
+
+		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+		{
+			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
+			p_cy_mesh->add_triangle(p_face->mIndices[0], p_face->mIndices[1], p_face->mIndices[2], shader, smooth);			
+		}
+
+		ustring name = ustring("UVMap");
+		Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
+		float3* fdata = attr->data_float3();
+		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+		{
+			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
+			int iv1 = p_face->mIndices[0];
+			int iv2 = p_face->mIndices[1];
+			int iv3 = p_face->mIndices[2];
+
+			if (mesh_ptr->mTextureCoords[0])
+			{
+				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
+				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
+				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+				fdata[tri_i * 3] = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
+				fdata[tri_i * 3 + 1] = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
+				fdata[tri_i * 3 + 2] = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+			}
+		}
+		//memcpy(fdata, &mesh_ptr->mTextureCoords[0][0], sizeof(aiVector3D) * triangle_num * 3);
+
+		p_cy_mesh->used_shaders.push_back(scene->default_surface);
+
+		//scene->default_background
 	}
 }
 
@@ -186,7 +389,15 @@ static void scene_init()
 	options.scene = new Scene(options.scene_params, options.session->device);
 
 	/* Read XML */
-	xml_read_file(options.scene, options.filepath.c_str());
+	std::transform(options.filepath.begin(), options.filepath.end(), options.filepath.begin(), ::tolower);
+	if (options.filepath.find(".fbx") != std::string::npos)
+	{
+		assimp_read_file(options.scene, options.filepath.c_str());
+	}
+	else
+	{
+		xml_read_file(options.scene, options.filepath.c_str());
+	}
 
 	/* Camera width/height override? */
 	if(!(options.width == 0 || options.height == 0)) {
@@ -200,6 +411,10 @@ static void scene_init()
 
 	/* Calculate Viewplane */
 	options.scene->camera->compute_auto_viewplane();
+	Transform matrix;
+
+	matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
+	options.scene->camera->matrix = matrix;
 }
 
 static void session_init()

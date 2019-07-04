@@ -47,6 +47,10 @@
 #include "Importer.hpp"
 #include "scene.h"
 #include "postprocess.h"
+#include "material.h"
+
+#include "mikktspace.h"
+#include "GenerateMikkTangent.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -133,6 +137,138 @@ static BufferParams& session_buffer_params()
 	return buffer_params;
 }
 
+static int mikk_get_num_faces(const SMikkTSpaceContext* context)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	if (userdata->mesh->subd_faces.size()) {
+		return userdata->mesh->subd_faces.size();
+	}
+	else {
+		return userdata->mesh->num_triangles();
+	}
+}
+
+static int mikk_get_num_verts_of_face(const SMikkTSpaceContext* context,
+	const int face_num)
+{
+	return 3;
+}
+
+static int mikk_vertex_index(const Mesh* mesh, const int face_num, const int vert_num)
+{
+	if (mesh->subd_faces.size()) {
+		const Mesh::SubdFace& face = mesh->subd_faces[face_num];
+		return mesh->subd_face_corners[face.start_corner + vert_num];
+	}
+	else {
+		return mesh->triangles[face_num * 3 + vert_num];
+	}
+}
+
+static int mikk_corner_index(const Mesh* mesh, const int face_num, const int vert_num)
+{
+	return face_num * 3 + vert_num;
+}
+
+static void mikk_get_position(const SMikkTSpaceContext* context,
+	float P[3],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+	const float3 vP = mesh->verts[vertex_index];
+	P[0] = vP.x;
+	P[1] = vP.y;
+	P[2] = vP.z;
+}
+
+static void mikk_get_texture_coordinate(const SMikkTSpaceContext* context,
+	float uv[2],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	if (userdata->texface != NULL) {
+		const int corner_index = mikk_corner_index(mesh, face_num, vert_num);
+		float3 tfuv = userdata->texface[corner_index];
+		uv[0] = tfuv.x;
+		uv[1] = tfuv.y;
+	}	
+	else {
+		uv[0] = 0.0f;
+		uv[1] = 0.0f;
+	}
+}
+
+static void mikk_get_normal(const SMikkTSpaceContext * context, float N[3],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	float3 vN;
+	if (mesh->subd_faces.size()) {
+		const Mesh::SubdFace& face = mesh->subd_faces[face_num];
+		if (face.smooth) {
+			const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+			vN = userdata->vertex_normal[vertex_index];
+		}
+		else {
+			vN = face.normal(mesh);
+		}
+	}
+	else {
+		if (mesh->smooth[face_num]) {
+			const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+			vN = userdata->vertex_normal[vertex_index];
+		}
+		else {
+			const Mesh::Triangle tri = mesh->get_triangle(face_num);
+			vN = tri.compute_normal(&mesh->verts[0]);
+		}
+	}
+	N[0] = vN.x;
+	N[1] = vN.y;
+	N[2] = vN.z;
+}
+
+static void mikk_set_tangent_space(const SMikkTSpaceContext * context,
+	const float T[],
+	const float sign,
+	const int face_num, const int vert_num)
+{
+	MikkUserData* userdata = (MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	const int corner_index = mikk_corner_index(mesh, face_num, vert_num);
+	userdata->tangent[corner_index] = make_float3(T[0], T[1], T[2]);
+	if (userdata->tangent_sign != NULL) {
+		userdata->tangent_sign[corner_index] = sign;
+	}
+}
+
+static void create_mikk_tangent(Mesh* cycle_mesh)
+{	
+	/* Setup userdata. */
+	//MikkUserData userdata(b_mesh, layer_name, mesh, tangent, tangent_sign);
+	/* Setup interface. */
+	SMikkTSpaceInterface sm_interface;
+	MikkUserData mikk_user_data(cycle_mesh);
+	memset(&sm_interface, 0, sizeof(sm_interface));
+	sm_interface.m_getNumFaces = mikk_get_num_faces;
+	sm_interface.m_getNumVerticesOfFace = mikk_get_num_verts_of_face;
+	sm_interface.m_getPosition = mikk_get_position;
+	sm_interface.m_getTexCoord = mikk_get_texture_coordinate;
+	sm_interface.m_getNormal = mikk_get_normal;
+	sm_interface.m_setTSpaceBasic = mikk_set_tangent_space;
+	/* Setup context. */
+	SMikkTSpaceContext context;
+	memset(&context, 0, sizeof(context));
+	context.m_pUserData = &mikk_user_data;
+	context.m_pInterface = &sm_interface;
+	/* Compute tangents. */
+	genTangSpaceDefault(&context);
+}
+
 static Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm)
 {
 	Mesh* mesh = new Mesh();
@@ -146,11 +282,54 @@ static Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm)
 	return mesh;
 }
 
-static void create_default_shader(Scene* scene, const std::string &diffuse_tex)
+int create_pbr_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
+{
+	ShaderGraph* graph = new ShaderGraph();
+
+	ImageTextureNode* img_node = new ImageTextureNode();
+	img_node->filename = diff_tex;
+	graph->add(img_node);
+
+	ImageTextureNode* mtl_img_node = new ImageTextureNode();
+	mtl_img_node->filename = mtl_tex;
+	graph->add(mtl_img_node);
+
+	ImageTextureNode* normal_img_node = new ImageTextureNode();
+	normal_img_node->filename = normal_tex;
+	//normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	graph->add(normal_img_node);
+
+	NormalMapNode* change_to_normalmap_node = new NormalMapNode();
+	change_to_normalmap_node->space = NODE_NORMAL_MAP_TANGENT;
+	graph->add(change_to_normalmap_node);
+	//change_to_normalmap_node->normal_osl = make_float3(1, 0, 0);
+	graph->connect(normal_img_node->output("Color"), change_to_normalmap_node->input("Color"));
+
+	DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
+	//diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+	graph->add(diffuse);
+
+	graph->connect(img_node->output("Color"), diffuse->input("Color"));
+	//graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Color"));
+	graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Normal"));
+
+	graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
+
+	Shader* shader = new Shader();
+	shader->name = "pbr_default_surface";
+	shader->graph = graph;
+	scene->shaders.push_back(shader);
+	//scene->default_surface = shader;
+	shader->tag_update(scene);
+
+	return scene->shaders.size() - 1;
+}
+
+static void create_default_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
 {
 	/* default surface */
 	{
-		ShaderGraph* graph = new ShaderGraph();
+		/*ShaderGraph* graph = new ShaderGraph();
 
 		ImageTextureNode* img_node = new ImageTextureNode();
 		img_node->filename = diffuse_tex;
@@ -168,7 +347,8 @@ static void create_default_shader(Scene* scene, const std::string &diffuse_tex)
 		shader->name = "default_surface";
 		shader->graph = graph;
 		scene->shaders.push_back(shader);
-		scene->default_surface = shader;
+		scene->default_surface = shader;*/
+		create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
 	}
 
 	/* default light */
@@ -212,37 +392,39 @@ static void create_default_shader(Scene* scene, const std::string &diffuse_tex)
 	}
 }
 
-static void fbx_add_default_shader(Scene* scene, const std::string& diffuse_tex)
+static void fbx_add_default_shader(Scene* scene)
 {
 	/* default surface */
 	{
-		ShaderGraph* graph = new ShaderGraph();
+		//ShaderGraph* graph = new ShaderGraph();
 
-		UVMapNode* uv_node = new UVMapNode();
-		uv_node->attribute = ustring("UVMap");
-		//uv_node->from_dupli = true;
-		graph->add(uv_node);	
+		//UVMapNode* uv_node = new UVMapNode();
+		//uv_node->attribute = ustring("UVMap");
+		////uv_node->from_dupli = true;
+		//graph->add(uv_node);	
 
-		ImageTextureNode* img_node = new ImageTextureNode();
-		img_node->filename = diffuse_tex;
-		graph->add(img_node);
+		//ImageTextureNode* img_node = new ImageTextureNode();
+		//img_node->filename = diffuse_tex;
+		//graph->add(img_node);
 
-		graph->connect(uv_node->output("UV"), img_node->input("Vector"));
+		//graph->connect(uv_node->output("UV"), img_node->input("Vector"));
 
-		DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
-		diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
-		graph->add(diffuse);
+		//DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
+		//diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+		//graph->add(diffuse);
 
-		graph->connect(img_node->output("Color"), diffuse->input("Color"));
+		//graph->connect(img_node->output("Color"), diffuse->input("Color"));
 
-		graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
+		//graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
 
-		Shader* shader = new Shader();
-		shader->name = "default_surface";
-		shader->graph = graph;
-		scene->shaders.push_back(shader);
-		scene->default_surface = shader;
-		shader->tag_update(scene);
+		//Shader* shader = new Shader();
+		//shader->name = "default_surface";
+		//shader->graph = graph;
+		//scene->shaders.push_back(shader);
+		//scene->default_surface = shader;
+		//shader->tag_update(scene);
+
+		//create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
 	}
 
 	/* default light */
@@ -301,8 +483,28 @@ static void fbx_add_default_shader(Scene* scene, const std::string& diffuse_tex)
 	gra->connect(v_node->output("Value"), bk_node->input("Strength"));
 }
 
+int TranslateMaterialCycles(Scene* scene, const aiMaterial* ai_mat, const std::string &dir_name)
+{
+	aiString ai_normal_str;
+	if (ai_mat->GetTexture(aiTextureType_NORMALS, 0, &ai_normal_str) == aiReturn_SUCCESS ||
+		ai_mat->GetTexture(aiTextureType_HEIGHT, 0, &ai_normal_str) == aiReturn_SUCCESS)
+	{		
+		
+	}
+
+	aiString ai_diffuse_str;
+	if (ai_mat->GetTexture(aiTextureType_DIFFUSE, 0, &ai_diffuse_str) == aiReturn_SUCCESS)
+	{
+		
+	}
+
+	return create_pbr_shader(scene, path_join(dir_name, ai_diffuse_str.C_Str()), "", path_join(dir_name, ai_normal_str.C_Str()));
+}
+
 static void assimp_read_file(Scene *scene, std::string filename)
 {	
+	std::string dir_name = path_dirname(filename);
+
 	Assimp::Importer importer;
 	unsigned int flags = aiProcess_MakeLeftHanded |
 		aiProcess_Triangulate |
@@ -313,7 +515,7 @@ static void assimp_read_file(Scene *scene, std::string filename)
 		aiProcess_FlipWindingOrder;
 	const aiScene* import_fbx_scene = importer.ReadFile(filename, flags);
 
-	fbx_add_default_shader(scene, "./cycles_scene/red.png");
+	fbx_add_default_shader(scene);
 
 	if (import_fbx_scene == NULL)
 	{
@@ -325,11 +527,14 @@ static void assimp_read_file(Scene *scene, std::string filename)
 	unsigned int mesh_num = import_fbx_scene->mNumMeshes;
 	unsigned int mat_num = import_fbx_scene->mNumMaterials;
 
+	std::vector<int> cycles_shader_indexs(mat_num);
+	for (int i = 0; i < mat_num; ++i)
+	{
+		cycles_shader_indexs[i] = TranslateMaterialCycles(scene, import_fbx_scene->mMaterials[i], dir_name);
+	}	
+
 	int shader = 0;
 	bool smooth = true;
-
-	//TODO: Create shader according mat_num
-	//
 
 	for (unsigned int mesh_i = 0; mesh_i < mesh_num; ++mesh_i)
 	{
@@ -341,13 +546,20 @@ static void assimp_read_file(Scene *scene, std::string filename)
 		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
 
 		const aiVector3D* aivertices_data = mesh_ptr->mVertices;
+		const aiVector3D* aiverteces_normal_data = mesh_ptr->mNormals;
 		p_cy_mesh->verts.resize(vertex_num);
 
-		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+		//p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
 
-		for (int i = 0; i < vertex_num; ++i)
+		p_cy_mesh->used_shaders.push_back(scene->shaders[cycles_shader_indexs[mesh_i]]);
+
+		Attribute* attr_N = p_cy_mesh->attributes.add(ATTR_STD_VERTEX_NORMAL);
+		float3* N = attr_N->data_float3();
+
+		for (int i = 0; i < vertex_num; ++i, ++N)
 		{
-			p_cy_mesh->verts[i] = make_float3(aivertices_data[i].x, aivertices_data[i].y, aivertices_data[i].z);			
+			p_cy_mesh->verts[i] = make_float3(aivertices_data[i].x, aivertices_data[i].y, aivertices_data[i].z);
+			*N = make_float3(aiverteces_normal_data[i].x, aiverteces_normal_data[i].y, aiverteces_normal_data[i].z);
 		}		
 
 		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
@@ -378,10 +590,14 @@ static void assimp_read_file(Scene *scene, std::string filename)
 		}
 		//memcpy(fdata, &mesh_ptr->mTextureCoords[0][0], sizeof(aiVector3D) * triangle_num * 3);
 
-		p_cy_mesh->used_shaders.push_back(scene->default_surface);
+		
 
 		//scene->default_background
+
+		create_mikk_tangent(p_cy_mesh);
 	}
+
+	//create tangent	
 }
 
 static void scene_init()

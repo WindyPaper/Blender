@@ -26,6 +26,7 @@
   /*---------------------------------------------------------------------------*/
 
 #include <string.h>
+#include <math.h>
 
 #include "MEM_guardedalloc.h"
 
@@ -204,9 +205,10 @@ void lm_toBarycentric(
 	out_uv[1] = (dot00 * dot12 - dot01 * dot02) * invDenom;
 }
 
-float orient2d(const float* a, const float* b, const float* c)
+int orient2d(const float* a, const float* b, const float* c)
 {
-	return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+	float ret = ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+	return (int)(ret);
 }
 
 bool is_top_left(const float* v0, const float* v1)
@@ -338,26 +340,30 @@ void zspan_scanconvert(ZSpan* zspan,
 	int max_x = zspan->rectx;
 	int max_y = zspan->recty;
 
-	float bias_v1_v2 = is_top_left(v1, v2) ? 0.0f : -1.0f;
-	float bias_v2_v3 = is_top_left(v2, v3) ? 0.0f : -1.0f;
-	float bias_v3_v1 = is_top_left(v3, v1) ? 0.0f : -1.0f;
+	//std::vector<float> img_x{ v1[0], v2[0], v3[0] };
+	//float img_y[] = { v1[1], v2[1], v3[1] };
+	//float max_img_x = *std::max_element(img_x, img_x + 3);
+
+	int bias_v1_v2 = is_top_left(v1, v2) ? 0 : -1;
+	int bias_v2_v3 = is_top_left(v2, v3) ? 0 : -1;
+	int bias_v3_v1 = is_top_left(v3, v1) ? 0 : -1;
 
 	for (int y = 0; y < max_y; ++y) {
 		for (int x = 0; x < max_x; ++x) {
 			float curr_pixel[2] = { x, y };
 
-			float w0 = orient2d(v2, v3, curr_pixel);
-			float w1 = orient2d(v3, v1, curr_pixel);
-			float w2 = orient2d(v1, v2, curr_pixel);
+			int w0 = orient2d(v2, v3, curr_pixel) + bias_v2_v3;
+			int w1 = orient2d(v3, v1, curr_pixel) + bias_v3_v1;
+			int w2 = orient2d(v1, v2, curr_pixel) + bias_v1_v2;			
 
-			const float eps = 0.1f;
+			const int eps = 0;
 
-			if (fabsf(w0) < eps || fabsf(w1) < eps || fabsf(w2) < eps)
-			{
-				continue;
-			}
+			//if (fabsf(w0) < eps || fabsf(w1) < eps || fabsf(w2) < eps)
+			//{
+			//	continue;
+			//}
 
-			if (w0 > eps && w1 > eps && w2 > eps) {
+			if (w0 >= eps && w1 >= eps && w2 >= eps) {
 				float uv[2];
 				lm_toBarycentric(v1, v2, v3, curr_pixel, uv);
 

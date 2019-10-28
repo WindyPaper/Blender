@@ -25,6 +25,7 @@
 #include "render/mesh.h"
 #include "render/nodes.h"
 #include "render/object.h"
+#include "render/bake.h"
 
 #include "util/util_args.h"
 #include "util/util_foreach.h"
@@ -51,6 +52,7 @@
 
 #include "mikktspace.h"
 #include "GenerateMikkTangent.h"
+#include "rasterization_lightmap_data.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -310,8 +312,8 @@ int create_pbr_shader(Scene* scene, const std::string& diff_tex, const std::stri
 	graph->add(diffuse);
 
 	graph->connect(img_node->output("Color"), diffuse->input("Color"));
-	//graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Color"));
-	graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Normal"));
+	//comment for baking	
+	//graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Normal"));
 
 	graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
 
@@ -325,108 +327,56 @@ int create_pbr_shader(Scene* scene, const std::string& diff_tex, const std::stri
 	return scene->shaders.size() - 1;
 }
 
-static void create_default_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
-{
-	/* default surface */
-	{
-		/*ShaderGraph* graph = new ShaderGraph();
-
-		ImageTextureNode* img_node = new ImageTextureNode();
-		img_node->filename = diffuse_tex;
-		graph->add(img_node);
-
-		DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
-		diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
-		graph->add(diffuse);
-
-		graph->connect(img_node->output("Color"), diffuse->input("Color"));
-
-		graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
-
-		Shader* shader = new Shader();
-		shader->name = "default_surface";
-		shader->graph = graph;
-		scene->shaders.push_back(shader);
-		scene->default_surface = shader;*/
-		create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
-	}
-
-	/* default light */
-	{
-		ShaderGraph* graph = new ShaderGraph();
-
-		EmissionNode* emission = new EmissionNode();
-		emission->color = make_float3(0.8f, 0.8f, 0.8f);
-		emission->strength = 0.0f;
-		graph->add(emission);
-
-		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
-
-		Shader* shader = new Shader();
-		shader->name = "default_light";
-		shader->graph = graph;
-		scene->shaders.push_back(shader);
-		scene->default_light = shader;
-	}
-
-	/* default background */
-	{
-		ShaderGraph* graph = new ShaderGraph();
-
-		Shader* shader = new Shader();
-		shader->name = "default_background";
-		shader->graph = graph;
-		scene->shaders.push_back(shader);
-		scene->default_background = shader;
-	}
-
-	/* default empty */
-	{
-		ShaderGraph* graph = new ShaderGraph();
-
-		Shader* shader = new Shader();
-		shader->name = "default_empty";
-		shader->graph = graph;
-		scene->shaders.push_back(shader);
-		scene->default_empty = shader;
-	}
-}
+//static void create_default_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
+//{
+//	/* default surface */
+//	{		
+//		create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
+//	}
+//
+//	/* default light */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		EmissionNode* emission = new EmissionNode();
+//		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+//		emission->strength = 0.0f;
+//		graph->add(emission);
+//
+//		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_light";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_light = shader;
+//	}
+//
+//	/* default background */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_background";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_background = shader;
+//	}
+//
+//	/* default empty */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_empty";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_empty = shader;
+//	}
+//}
 
 static void fbx_add_default_shader(Scene* scene)
 {
-	/* default surface */
-	{
-		//ShaderGraph* graph = new ShaderGraph();
-
-		//UVMapNode* uv_node = new UVMapNode();
-		//uv_node->attribute = ustring("UVMap");
-		////uv_node->from_dupli = true;
-		//graph->add(uv_node);	
-
-		//ImageTextureNode* img_node = new ImageTextureNode();
-		//img_node->filename = diffuse_tex;
-		//graph->add(img_node);
-
-		//graph->connect(uv_node->output("UV"), img_node->input("Vector"));
-
-		//DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
-		//diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
-		//graph->add(diffuse);
-
-		//graph->connect(img_node->output("Color"), diffuse->input("Color"));
-
-		//graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
-
-		//Shader* shader = new Shader();
-		//shader->name = "default_surface";
-		//shader->graph = graph;
-		//scene->shaders.push_back(shader);
-		//scene->default_surface = shader;
-		//shader->tag_update(scene);
-
-		//create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
-	}
-
 	/* default light */
 	{
 		ShaderGraph* graph = new ShaderGraph();
@@ -570,7 +520,10 @@ static void assimp_read_file(Scene *scene, std::string filename)
 
 		ustring name = ustring("UVMap");
 		Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
+		ustring lightmap_name = ustring("lightmap_uv");
+		Attribute* lightmap_attr = p_cy_mesh->attributes.add(ATTR_STD_UV, lightmap_name);
 		float3* fdata = attr->data_float3();
+		float3* lightmap_data = lightmap_attr->data_float3();
 		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
 		{
 			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
@@ -580,12 +533,24 @@ static void assimp_read_file(Scene *scene, std::string filename)
 
 			if (mesh_ptr->mTextureCoords[0])
 			{
+				aiVector3D* uv0 = mesh_ptr->mTextureCoords[0];
 				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
 				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
 				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
-				fdata[tri_i * 3] = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
-				fdata[tri_i * 3 + 1] = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
-				fdata[tri_i * 3 + 2] = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+				fdata[tri_i * 3] = make_float3(uv0[iv1].x, uv0[iv1].y, uv0[iv1].z);
+				fdata[tri_i * 3 + 1] = make_float3(uv0[iv2].x, uv0[iv2].y, uv0[iv2].z);
+				fdata[tri_i * 3 + 2] = make_float3(uv0[iv3].x, uv0[iv3].y, uv0[iv3].z);
+			}
+
+			if (mesh_ptr->mTextureCoords[1])
+			{
+				aiVector3D* uv1 = mesh_ptr->mTextureCoords[1];
+				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
+				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
+				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+				lightmap_data[tri_i * 3] = make_float3(uv1[iv1].x, uv1[iv1].y, uv1[iv1].z);
+				lightmap_data[tri_i * 3 + 1] = make_float3(uv1[iv2].x, uv1[iv2].y, uv1[iv2].z);
+				lightmap_data[tri_i * 3 + 2] = make_float3(uv1[iv3].x, uv1[iv3].y, uv1[iv3].z);
 			}
 		}
 		//memcpy(fdata, &mesh_ptr->mTextureCoords[0][0], sizeof(aiVector3D) * triangle_num * 3);
@@ -595,9 +560,18 @@ static void assimp_read_file(Scene *scene, std::string filename)
 		//scene->default_background
 
 		create_mikk_tangent(p_cy_mesh);
-	}
 
-	//create tangent	
+		//create lightmap parameterization data
+		/*RasterizationLightmapData ras;
+		ras.raster_triangle(*p_cy_mesh, 128, 128);
+		Progress p;
+		float* ret = new float[128 * 128];
+		memset(ret, 0, 128 * 128 * sizeof(float));
+		int pass_filter = BakePassFilterCombos::BAKE_FILTER_COMBINED;
+		scene->bake_manager->bake(scene->device, &scene->dscene, scene, p, ShaderEvalType::SHADER_EVAL_BAKE, pass_filter, ras.get_bake_data(), ret);
+
+		delete ret;*/
+	}
 }
 
 static void scene_init()
@@ -633,6 +607,41 @@ static void scene_init()
 	options.scene->camera->matrix = matrix;
 }
 
+static void start_render_image()
+{
+	options.session->reset(session_buffer_params(), options.session_params.samples);
+	options.session->start();
+}
+
+static void bake_light_map()
+{
+	options.session->load_kernels();
+	options.session->update_scene();
+	Scene* scene = options.session->scene;
+	RasterizationLightmapData* ras = new RasterizationLightmapData();
+	const int size = 256;
+	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
+	Progress p;
+	float* ret = new float[size * size * 4];
+	memset(ret, 0, size * size * 4 * sizeof(float));
+	int pass_filter = eBakePassFilter::BAKE_FILTER_INDIRECT;//BakePassFilterCombos::BAKE_FILTER_DIFFUSE_INDIRECT;
+	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, ShaderEvalType::SHADER_EVAL_DIFFUSE, pass_filter, ras->get_bake_data(), ret);
+
+	const int channel = 4;
+	uchar* out_c = new uchar[size * size * channel];
+	for (int i = 0; i < size * size * 4; i = i + 4)
+	{
+		out_c[i] = (uchar)(ret[i] * 255);
+		out_c[i + 1] = (uchar)(ret[i + 1] * 255);
+		out_c[i + 2] = (uchar)(ret[i + 2] * 255);
+		out_c[i + 3] = (uchar)(ret[i + 3] * 255);
+	}
+	options.output_path = "./128KK128.tga";
+	write_render(out_c, size, size, channel);
+
+	delete[]ret;
+}
+
 static void session_init()
 {
 	options.session_params.write_render_cb = write_render;
@@ -649,8 +658,10 @@ static void session_init()
 	scene_init();
 	options.session->scene = options.scene;
 
-	options.session->reset(session_buffer_params(), options.session_params.samples);
-	options.session->start();
+	//start_render_image();
+	 
+	//For baking
+	bake_light_map();
 }
 
 static void session_exit()

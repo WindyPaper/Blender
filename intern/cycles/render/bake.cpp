@@ -140,6 +140,7 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 {
 	size_t num_pixels = bake_data->size();
 
+	scene->integrator->aa_samples = 8;
 	int num_samples = aa_samples(scene, bake_data, shader_type);
 
 	/* calculate the total pixel samples for the progress bar */
@@ -175,7 +176,17 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 
 		/* run device task */
 		device_vector<float4> d_output(device, "bake_output", MEM_READ_WRITE);
-		d_output.alloc(shader_size);
+
+		size_t output_pixel_scale_size;
+		if (shader_type == SHADER_EVAL_SH4)
+		{
+			output_pixel_scale_size = 3;
+		}
+		else
+		{
+			output_pixel_scale_size = 1;
+		}
+		d_output.alloc(output_pixel_scale_size * shader_size);
 		d_output.zero_to_device();
 		d_input.copy_to_device();
 
@@ -186,7 +197,7 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 		task.shader_filter = pass_filter;
 		task.shader_x = 0;
 		task.offset = shader_offset;
-		task.shader_w = d_output.size();
+		task.shader_w = shader_size;
 		task.num_samples = num_samples;
 		task.get_cancel = function_bind(&Progress::get_cancel, &progress);
 		task.update_progress_sample = function_bind(&Progress::add_samples_update, &progress, _1, _2);
@@ -209,17 +220,24 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 
 		float4 *offset = d_output.data();
 
-		size_t depth = 4;
-		for(size_t i=shader_offset; i < (shader_offset + shader_size); i++) {
-			size_t index = i * depth;
-			float4 out = offset[k++];
+		if (shader_type == SHADER_EVAL_SH4)
+		{
+			memcpy(result, offset, d_output.size() * sizeof(float4));
+		}
+		else
+		{
+			size_t depth = 4;
+			for (size_t i = shader_offset; i < (shader_offset + shader_size); i++) {
+				size_t index = i * depth;
+				float4 out = offset[k++];
 
-			if(bake_data->is_valid(i)) {
-				for(size_t j=0; j < 4; j++) {
-					result[index + j] = out[j];
+				if (bake_data->is_valid(i)) {
+					for (size_t j = 0; j < 4; j++) {
+						result[index + j] = out[j];
+					}
 				}
 			}
-		}
+		}		
 
 		d_output.free();
 	}
@@ -280,6 +298,8 @@ int BakeManager::shader_type_to_pass_filter(ShaderEvalType type, const int pass_
 		case SHADER_EVAL_SHADOW:
 			return BAKE_FILTER_DIRECT;
 		case SHADER_EVAL_DIFFUSE:
+			return BAKE_FILTER_DIFFUSE | component_flags;
+		case SHADER_EVAL_SH4:
 			return BAKE_FILTER_DIFFUSE | component_flags;
 		case SHADER_EVAL_GLOSSY:
 			return BAKE_FILTER_GLOSSY | component_flags;

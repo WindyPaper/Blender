@@ -128,6 +128,49 @@ static bool write_render(const uchar *pixels, int w, int h, int channels)
 	return true;
 }
 
+static bool write_float_map(const float* pixels, int w, int h, int channels)
+{
+	string msg = string_printf("Writing image %s", options.output_path.c_str());
+	session_print(msg);
+
+	unique_ptr<ImageOutput> out = unique_ptr<ImageOutput>(ImageOutput::create(options.output_path));
+	if (!out) {
+		return false;
+	}
+
+	ImageSpec spec(w, h, channels, TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.attribute("oiio:ColorSpace", "Linear");
+	spec.channelnames.clear();
+	spec.channelnames.push_back("R");
+	spec.channelnames.push_back("G");
+	spec.channelnames.push_back("B");
+	spec.channelnames.push_back("A");
+
+	if (!out->open(options.output_path, spec)) {
+		return false;
+	}
+
+	/* conversion for different top/bottom convention */
+	int pixel_size = channels * sizeof(float);
+	int scanlinesize = pixel_size * w;
+	const char* curr = (char*)pixels + (h - 1) * scanlinesize;
+	out->write_image(TypeDesc::FLOAT,
+		(char*)pixels + (h - 1) * scanlinesize,
+		AutoStride,
+		-scanlinesize,
+		AutoStride);
+	//out->write_image(TypeDesc::FLOAT, /* use channel formats */
+	//	pixels);    /* pixel stride */
+
+	out->close();
+
+	return true;
+}
+
 static BufferParams& session_buffer_params()
 {
 	static BufferParams buffer_params;
@@ -580,7 +623,7 @@ static void scene_init()
 
 	/* Read XML */
 	std::transform(options.filepath.begin(), options.filepath.end(), options.filepath.begin(), ::tolower);
-	if (options.filepath.find(".fbx") != std::string::npos)
+	if (options.filepath.find(".fbx") != std::string::npos || options.filepath.find(".dae") != std::string::npos)
 	{
 		assimp_read_file(options.scene, options.filepath.c_str());
 	}
@@ -613,33 +656,86 @@ static void start_render_image()
 	options.session->start();
 }
 
+static void save_tga_map(int w, int h, int channel, const std::string &output_name, const float* input_data)
+{
+	uchar* out_c = new uchar[w * h * channel];
+	for (int i = 0; i < w * h * channel; i = i + channel)
+	{
+		out_c[i] = (uchar)(input_data[i] * 255);
+		out_c[i + 1] = (uchar)(input_data[i + 1] * 255);
+		out_c[i + 2] = (uchar)(input_data[i + 2] * 255);
+		out_c[i + 3] = (uchar)(input_data[i + 3] * 255);
+	}
+	options.output_path = output_name;
+	write_render(out_c, w, h, channel);
+
+	delete[] out_c;
+}
+
+static void save_sh_map(int w, int h, int sh_num, const std::string& output_name, const float* input_data)
+{
+	if (sh_num == 4)
+	{
+		float *sh_map = new float[w * h * 4];
+		memset(sh_map, 0, w * h * 4 * sizeof(float));
+		for (int i = 0; i < 3; ++i)
+		{
+			for (int hi = 0; hi < h; ++hi)
+			{
+				for (int wi = 0; wi < w; ++wi)
+				{
+					const float *curr = &input_data[wi * 4 * 3 + i*4 + hi * w * 4 * 3];
+					memcpy(&sh_map[wi * 4 + hi * w * 4], curr, sizeof(float) * 4);
+					/*sh_map[wi * 4 + hi * w * 4 + 0] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 1] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 2] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 3] = 1.0f;*/
+					
+					//sh_map[wi + hi * w] = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+				}
+			}
+
+			char save_exr_name[256];
+			sprintf(save_exr_name, "./sh4_%d.exr", i);
+			options.output_path = save_exr_name;
+			write_float_map(sh_map, w, h, 4);
+			memset(sh_map, 0, w * h * 4 * sizeof(float));
+		}
+
+		delete[] sh_map;
+	}
+}
+
 static void bake_light_map()
 {
 	options.session->load_kernels();
 	options.session->update_scene();
 	Scene* scene = options.session->scene;
 	RasterizationLightmapData* ras = new RasterizationLightmapData();
-	const int size = 256;
+	const int size = 20;
 	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
 	Progress p;
-	float* ret = new float[size * size * 4];
-	memset(ret, 0, size * size * 4 * sizeof(float));
+	int bake_pixel_size = 4;
+	ShaderEvalType shader_value_type = ShaderEvalType::SHADER_EVAL_DIFFUSE;
+	if (shader_value_type == SHADER_EVAL_SH4)
+	{
+		bake_pixel_size = 4 * 3;
+	}
+	int bake_output_buffer_size = size * size * bake_pixel_size;
+	float* ret = new float[bake_output_buffer_size];
+	memset(ret, 0, bake_output_buffer_size * sizeof(float));
 	int pass_filter = eBakePassFilter::BAKE_FILTER_INDIRECT;//BakePassFilterCombos::BAKE_FILTER_DIFFUSE_INDIRECT;
-	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, ShaderEvalType::SHADER_EVAL_DIFFUSE, pass_filter, ras->get_bake_data(), ret);
+	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, shader_value_type, pass_filter, ras->get_bake_data(), ret);
 
 	const int channel = 4;
-	uchar* out_c = new uchar[size * size * channel];
-	for (int i = 0; i < size * size * 4; i = i + 4)
+	if (shader_value_type == SHADER_EVAL_SH4)
 	{
-		out_c[i] = (uchar)(ret[i] * 255);
-		out_c[i + 1] = (uchar)(ret[i + 1] * 255);
-		out_c[i + 2] = (uchar)(ret[i + 2] * 255);
-		out_c[i + 3] = (uchar)(ret[i + 3] * 255);
+		save_sh_map(size, size, 4, "", ret);
 	}
-	options.output_path = "./128KK128.tga";
-	write_render(out_c, size, size, channel);
-
-	delete[]ret;
+	else
+	{
+		save_tga_map(size, size, channel, "./128KK128.tga", ret);
+	}
 }
 
 static void session_init()

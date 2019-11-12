@@ -1,5 +1,5 @@
 #include "rasterization_lightmap_data.h"
-#include "bake.h"
+#include "render/bake.h"
 
 #include "render/mesh.h"
 

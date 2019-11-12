@@ -321,7 +321,7 @@ void Film::device_update(Device *device, DeviceScene *dscene, Scene *scene)
 	kfilm->pass_flag = 0;
 	kfilm->light_pass_flag = 0;
 	kfilm->pass_stride = 0;
-	kfilm->use_light_pass = use_light_visibility || use_sample_clamp;
+	kfilm->use_light_pass = 1;//Hard code set to 1 because of baker // use_light_visibility || use_sample_clamp; 
 
 	bool have_cryptomatte = false;
 

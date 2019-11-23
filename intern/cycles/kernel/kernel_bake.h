@@ -285,12 +285,13 @@ ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
 }
 
 ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input, ccl_global float4 *output,
-                                     ShaderEvalType type, int pass_filter, int i, int offset, int sample)
+                                     ShaderEvalType type, int pass_filter, int i, int offset, int sample, float2* uvs_array,
+									 uint2* uvs_array_offset_ele_size)
 {
 	ShaderData sd;
 	PathState state = {0};
 	uint4 in = input[i * 2];
-	uint4 diff = input[i * 2 + 1];
+	uint4 diff = input[i * 2 + 1];	
 
 	float3 out = make_float3(0.0f, 0.0f, 0.0f);
 	float4 sh_out[3];
@@ -324,6 +325,19 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 
 	/* subpixel u/v offset */
 	if(sample > 0) {
+		if (uvs_array_offset_ele_size && uvs_array_offset_ele_size[i].y > 0)
+		{
+			uint uvs_array_offset = uvs_array_offset_ele_size[i].x;
+			uint uvs_array_ele_size = uvs_array_offset_ele_size[i].y;
+
+			int offset_index = 0;
+			if (sample > uvs_array_ele_size)
+			{
+				offset_index = ((sample / uvs_array_ele_size) - (int)(sample / uvs_array_ele_size)) * uvs_array_ele_size;
+			}
+			u = uvs_array[uvs_array_offset + offset_index].x;
+			v = uvs_array[uvs_array_offset + offset_index].y;
+		}
 		u = bake_clamp_mirror_repeat(u + dudx*(filter_x - 0.5f) + dudy*(filter_y - 0.5f), 1.0f);
 		v = bake_clamp_mirror_repeat(v + dvdx*(filter_x - 0.5f) + dvdy*(filter_y - 0.5f), 1.0f - u);
 	}
@@ -558,7 +572,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	}
 	else
 	{
-		output[i] = make_float4(0.5f, 0.5f, 0.5f, 0.5f);// (sample == 0) ? scaled_result : output[i] + scaled_result;
+		output[i] = (sample == 0) ? scaled_result : output[i] + scaled_result;
 	}
 }
 

@@ -3,11 +3,22 @@
 
 #include "render/mesh.h"
 
+#include <bitset>
+
 RasterizationLightmapData::RasterizationLightmapData() :
-	mp_baker_data(nullptr)
+	mp_baker_data(nullptr),
+	m_multi_sample_grid_resolution(4)
 {
 
 }
+
+RasterizationLightmapData::RasterizationLightmapData(int multi_sample_grid_resolution) :
+	mp_baker_data(nullptr),
+	m_multi_sample_grid_resolution(multi_sample_grid_resolution)
+{
+
+}
+
 
 RasterizationLightmapData::~RasterizationLightmapData()
 {
@@ -124,44 +135,38 @@ bool is_top_left(const ccl::float2 v0, const ccl::float2 v1)
 
 void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const int img_w, const int img_h, const int prim, const lightmap_uv_differential* uv_diff, const ccl::float2 uv1, const ccl::float2 uv2, const ccl::float2 uv3)
 {
+	const int pixel_num = img_w * img_h;
+
 	ccl::float2 max_uv = ccl::max(ccl::max(uv1, uv2), uv3);
 	ccl::float2 min_uv = ccl::min(ccl::min(uv1, uv2), uv3);
 
-	int bias_v1_v2 = is_top_left(uv1, uv2) ? 0 : -1;
-	int bias_v2_v3 = is_top_left(uv2, uv3) ? 0 : -1;
-	int bias_v3_v1 = is_top_left(uv3, uv1) ? 0 : -1;
+	std::vector<bool> bool_main_sample_pixels;
+	bool_main_sample_pixels.resize(pixel_num, false);
 
-	for (int y = min_uv.y; y < max_uv.y; ++y)
+	for (float y = min_uv.y; y < max_uv.y + 0.0f; ++y)
 	{
-		for (int x = min_uv.x; x < max_uv.x; ++x)
+		for (float x = min_uv.x; x < max_uv.x + 0.0f; ++x)
 		{
-			ccl::float2 curr_pixel = ccl::make_float2(x, y);
-
-			/*int w0 = orient2d(uv2, uv3, curr_pixel) + bias_v2_v3;
-			int w1 = orient2d(uv3, uv1, curr_pixel) + bias_v3_v1;
-			int w2 = orient2d(uv1, uv2, curr_pixel) + bias_v1_v2;
-
-			const int eps = 0;
-
-			if (w0 >= eps && w1 >= eps && w2 >= eps) {
-				ccl::float2 out_uv;
-				lm_toBarycentric(uv1, uv2, uv3, curr_pixel, out_uv);
-
-				int pixel_index = img_w * y + x;
-				mp_baker_data->set(pixel_index, prim, &out_uv[0], uv_diff->dudx, uv_diff->dudy, uv_diff->dvdx, uv_diff->dvdy);
-			}
-			else
-			{
-				int k = 0;
-			}*/
+			//ccl::float2 curr_pixel = ccl::make_float2(std::fminf(x + 0.5f, max_uv.x - 0.005f), std::fminf(y + 0.5f, max_uv.y - 0.005f));
+			ccl::float2 curr_pixel = ccl::make_float2((int)x + 0.5f, (int)y + 0.5f);
 
 			if (PointInTriangle(ccl::make_float3(uv1.x, uv1.y, 0.0f), ccl::make_float3(uv2.x, uv2.y, 0.0f), ccl::make_float3(uv3.x, uv3.y, 0.0f), ccl::make_float3(curr_pixel.x, curr_pixel.y, 0.0f)))
 			{
 				ccl::float2 out_uv;
 				lm_toBarycentric(uv1, uv2, uv3, curr_pixel, out_uv);
 
-				int pixel_index = img_w * y + x;
-				mp_baker_data->set(pixel_index, prim, &out_uv[0], uv_diff->dudx, uv_diff->dudy, uv_diff->dvdx, uv_diff->dvdy);
+				int pixel_index = img_w * (int)((y + 0.0f)/m_multi_sample_grid_resolution) + (int)((x + 0.0f)/m_multi_sample_grid_resolution);
+
+				if (bool_main_sample_pixels[pixel_index] == false)
+				{
+					mp_baker_data->set(pixel_index, prim, &out_uv[0], uv_diff->dudx, uv_diff->dudy, uv_diff->dvdx, uv_diff->dvdy);
+
+					bool_main_sample_pixels[pixel_index] = true;
+				}
+				else
+				{
+					mp_baker_data->push_sample_uvs(pixel_index, out_uv);
+				}
 			}
 		}
 	}
@@ -169,7 +174,7 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 
 void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const int mesh_num, const int img_w, const int img_h)
 {
-	int pixel_num = img_w * img_h;
+	const int pixel_num = img_w * img_h;
 
 	if (mp_baker_data == nullptr)
 	{
@@ -182,8 +187,8 @@ void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const in
 	for (int i = 0; i < pixel_num; ++i)
 	{
 		mp_baker_data->set(i, -1, zero_v2, 0.0f, 0.0f, 0.0f, 0.0f);
-	}
-	
+	}	
+
 	for (int mesh_i = 0; mesh_i < mesh_num; ++mesh_i)
 	{
 		int tri_num = mesh[mesh_i]->num_triangles();
@@ -199,8 +204,8 @@ void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const in
 
 			for (int t = 0; t < 3; ++t)
 			{
-				uvs[t].x = uv_data[i * 3 + t].x * (float)img_w - (0.5f + 0.001f);
-				uvs[t].y = uv_data[i * 3 + t].y * (float)img_h - (0.5f + 0.001f);
+				uvs[t].x = uv_data[i * 3 + t].x * (float)(img_w * m_multi_sample_grid_resolution);// -(0.5f + 0.001f);
+				uvs[t].y = uv_data[i * 3 + t].y * (float)(img_h * m_multi_sample_grid_resolution);// -(0.5f + 0.001f);
 			}
 
 			bake_differentials((float*)& uvs[0], (float*)& uvs[1], (float*)& uvs[2], &out_uv_diff);

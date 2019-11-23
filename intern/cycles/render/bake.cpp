@@ -36,6 +36,10 @@ m_num_pixels(num_pixels)
 	m_dudy.resize(num_pixels);
 	m_dvdx.resize(num_pixels);
 	m_dvdy.resize(num_pixels);
+
+	for (int i = 0; i < num_pixels; i++) {
+		set_null(i);		
+	}
 }
 
 BakeData::~BakeData()
@@ -78,6 +82,36 @@ size_t BakeData::size()
 bool BakeData::is_valid(int i)
 {
 	return m_primitive[i] != -1;
+}
+
+void BakeData::push_sample_uvs(int i, const float2& uv)
+{
+	assert(is_valid(i));
+
+	auto map_iter = BakeSamplePointsMap.find(i);
+	if (map_iter == BakeSamplePointsMap.end())
+	{
+		std::vector<float2> vec;
+		vec.push_back(uv);
+		BakeSamplePointsMap.insert(std::make_pair(i, vec));
+	}
+	else
+	{
+		map_iter->second.push_back(uv);
+	}
+}
+
+const BakeData::UVArray* BakeData::sample_uvs(int i) const
+{
+	auto map_iter = BakeSamplePointsMap.find(i);
+	if (map_iter == BakeSamplePointsMap.end())
+	{
+		return nullptr;
+	}
+	else
+	{
+		return &map_iter->second;
+	}
 }
 
 uint4 BakeData::data(int i)
@@ -140,7 +174,7 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 {
 	size_t num_pixels = bake_data->size();
 
-	scene->integrator->aa_samples = 8;
+	scene->integrator->aa_samples = 512;
 	int num_samples = aa_samples(scene, bake_data, shader_type);
 
 	/* calculate the total pixel samples for the progress bar */
@@ -164,15 +198,53 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 		uint4 *d_input_data = d_input.alloc(shader_size * 2);
 		size_t d_input_size = 0;
 
+		int uvs_array_size = 0;
 		for(size_t i = shader_offset; i < (shader_offset + shader_size); i++) {
 			d_input_data[d_input_size++] = bake_data->data(i);
 			d_input_data[d_input_size++] = bake_data->differentials(i);
+
+			/*setup sample uvs*/
+			const BakeData::UVArray* puv_array = bake_data->sample_uvs(i);
+			if (puv_array)
+			{
+				uvs_array_size += puv_array->size();
+			}			
+		}
+
+		//multi sampling
+		device_vector<float2> d_uvs_array(device, "uvs_array", MEM_READ_ONLY);
+		device_vector<uint2> d_uvs_array_offset_ele_size(device, "uvs_array_offset_ele_size", MEM_READ_ONLY);
+		if (uvs_array_size > 0)
+		{			
+			float2* d_uvs_array_data = d_uvs_array.alloc(uvs_array_size);			
+			uint2* d_uvs_array_offset_ele_size_data = d_uvs_array_offset_ele_size.alloc(shader_size);
+			int uvs_array_index = 0;
+			int array_offset_pos = 0;
+			float2* curr_uvs_array_data_pos = d_uvs_array_data;
+			for (size_t i = shader_offset; i < (shader_offset + shader_size); i++) {
+				const BakeData::UVArray* puv_array = bake_data->sample_uvs(i);
+				const int uvs_array_size = puv_array ? puv_array->size() : 0;
+				uint2* p_offset_ele_size_data = &d_uvs_array_offset_ele_size_data[uvs_array_index];
+				p_offset_ele_size_data->x = array_offset_pos;
+				p_offset_ele_size_data->y = uvs_array_size;
+
+				//set uv samples to array
+				for (int uvs_intex = 0; uvs_intex < uvs_array_size; ++uvs_intex)
+				{
+					d_uvs_array_data[array_offset_pos + uvs_intex] = puv_array->at(uvs_intex);
+				}
+
+				array_offset_pos += uvs_array_size;
+				++uvs_array_index;
+			}
+			d_uvs_array.copy_to_device();
+			d_uvs_array_offset_ele_size.copy_to_device();
 		}
 
 		if(d_input_size == 0) {
 			m_is_baking = false;
 			return false;
-		}
+		}		
 
 		/* run device task */
 		device_vector<float4> d_output(device, "bake_output", MEM_READ_WRITE);
@@ -199,6 +271,8 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 		task.offset = shader_offset;
 		task.shader_w = shader_size;
 		task.num_samples = num_samples;
+		task.uvs_array = d_uvs_array.device_pointer;
+		task.uvs_array_offset_ele_size = d_uvs_array_offset_ele_size.device_pointer;
 		task.get_cancel = function_bind(&Progress::get_cancel, &progress);
 		task.update_progress_sample = function_bind(&Progress::add_samples_update, &progress, _1, _2);
 

@@ -153,7 +153,9 @@ void KERNEL_FUNCTION_FULL_NAME(shader)(KernelGlobals *kg,
                                        int filter,
                                        int i,
                                        int offset,
-                                       int sample)
+                                       int sample,
+									   float2 *uvs_array,
+									   uint2 *uvs_array_offset_ele_size)
 {
 #ifdef KERNEL_STUB
 	STUB_ASSERT(KERNEL_ARCH, shader);
@@ -167,7 +169,9 @@ void KERNEL_FUNCTION_FULL_NAME(shader)(KernelGlobals *kg,
 		                     filter,
 		                     i,
 		                     offset,
-		                     sample);
+		                     sample,
+							 uvs_array,
+							 uvs_array_offset_ele_size);
 #  endif
 	}
 	else if(type == SHADER_EVAL_DISPLACE) {

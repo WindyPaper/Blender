@@ -47,9 +47,14 @@ public:
 
 	device_ptr shader_input;
 	device_ptr shader_output;
+	device_ptr sample_uvs_buffer;
 	int shader_eval_type;
 	int shader_filter;
 	int shader_x, shader_w;
+
+	//uv array samples
+	device_ptr uvs_array;
+	device_ptr uvs_array_offset_ele_size;
 
 	int passes_size;
 

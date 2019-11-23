@@ -696,7 +696,7 @@ static void save_sh_map(int w, int h, int sh_num, const std::string& output_name
 			}
 
 			char save_exr_name[256];
-			sprintf(save_exr_name, "./sh4_%d.exr", i);
+			sprintf(save_exr_name, "E:/unity_project/TestBaker/Assets/sh4_%d.exr", i);
 			options.output_path = save_exr_name;
 			write_float_map(sh_map, w, h, 4);
 			memset(sh_map, 0, w * h * 4 * sizeof(float));
@@ -711,8 +711,8 @@ static void bake_light_map()
 	options.session->load_kernels();
 	options.session->update_scene();
 	Scene* scene = options.session->scene;
-	RasterizationLightmapData* ras = new RasterizationLightmapData();
-	const int size = 20;
+	RasterizationLightmapData* ras = new RasterizationLightmapData(1);
+	const int size = 64;
 	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
 	Progress p;
 	int bake_pixel_size = 4;
@@ -724,7 +724,7 @@ static void bake_light_map()
 	int bake_output_buffer_size = size * size * bake_pixel_size;
 	float* ret = new float[bake_output_buffer_size];
 	memset(ret, 0, bake_output_buffer_size * sizeof(float));
-	int pass_filter = eBakePassFilter::BAKE_FILTER_INDIRECT;//BakePassFilterCombos::BAKE_FILTER_DIFFUSE_INDIRECT;
+	int pass_filter = BAKE_FILTER_DIFFUSE_DIRECT | BAKE_FILTER_DIFFUSE_INDIRECT | BAKE_FILTER_COLOR;//BakePassFilterCombos::BAKE_FILTER_DIFFUSE_INDIRECT;
 	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, shader_value_type, pass_filter, ras->get_bake_data(), ret);
 
 	const int channel = 4;
@@ -734,7 +734,7 @@ static void bake_light_map()
 	}
 	else
 	{
-		save_tga_map(size, size, channel, "./128KK128.tga", ret);
+		save_tga_map(size, size, channel, "E:/unity_project/TestBaker/Assets/128KK128.tga", ret);
 	}
 }
 

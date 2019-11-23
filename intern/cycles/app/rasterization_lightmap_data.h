@@ -23,6 +23,7 @@ class RasterizationLightmapData
 {
 public:
 	RasterizationLightmapData();
+	RasterizationLightmapData(int multi_sample_grid_resolution);
 	~RasterizationLightmapData();
 
 	void bake_differentials(const float* uv1, const float* uv2, const float* uv3, lightmap_uv_differential* out_uv_diff);
@@ -37,6 +38,7 @@ public:
 
 private:
 	ccl::BakeData* mp_baker_data;
+	int m_multi_sample_grid_resolution;
 };
 
 #endif

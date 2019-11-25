@@ -93,16 +93,30 @@ void BakeData::push_sample_uvs(int i, const float2& uv)
 	{
 		std::vector<float2> vec;
 		vec.push_back(uv);
-		BakeSamplePointsMap.insert(std::make_pair(i, vec));
+		PrimUVArray prim_uvarray;
+		prim_uvarray.insert(std::make_pair(m_primitive[i], vec));
+		BakeSamplePointsMap.insert(std::make_pair(i, prim_uvarray));
 	}
 	else
 	{
-		map_iter->second.push_back(uv);
+		//map_iter->second.push_back(uv);
+		PrimUVArray &prim_uvarray = map_iter->second;
+		if (prim_uvarray.find(m_primitive[i]) == prim_uvarray.end())
+		{
+			std::vector<float2> vec;
+			vec.push_back(uv);
+			prim_uvarray.insert(std::make_pair(m_primitive[i], vec));
+		}
+		else
+		{
+			prim_uvarray[m_primitive[i]].push_back(uv);
+		}
 	}
 }
 
 const BakeData::UVArray* BakeData::sample_uvs(int i) const
 {
+	int prim = m_primitive[i];
 	auto map_iter = BakeSamplePointsMap.find(i);
 	if (map_iter == BakeSamplePointsMap.end())
 	{
@@ -110,8 +124,14 @@ const BakeData::UVArray* BakeData::sample_uvs(int i) const
 	}
 	else
 	{
-		return &map_iter->second;
+		const PrimUVArray& prim_uv_array = map_iter->second;
+		if (prim_uv_array.find(prim) != prim_uv_array.end())
+		{
+			return &(prim_uv_array.find(prim)->second);
+		}
 	}
+
+	return nullptr;
 }
 
 uint4 BakeData::data(int i)

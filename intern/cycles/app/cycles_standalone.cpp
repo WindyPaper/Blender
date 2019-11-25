@@ -711,12 +711,12 @@ static void bake_light_map()
 	options.session->load_kernels();
 	options.session->update_scene();
 	Scene* scene = options.session->scene;
-	RasterizationLightmapData* ras = new RasterizationLightmapData(1);
+	RasterizationLightmapData* ras = new RasterizationLightmapData(16);
 	const int size = 64;
 	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
 	Progress p;
 	int bake_pixel_size = 4;
-	ShaderEvalType shader_value_type = ShaderEvalType::SHADER_EVAL_DIFFUSE;
+	ShaderEvalType shader_value_type = ShaderEvalType::SHADER_EVAL_SH4;
 	if (shader_value_type == SHADER_EVAL_SH4)
 	{
 		bake_pixel_size = 4 * 3;
@@ -724,7 +724,7 @@ static void bake_light_map()
 	int bake_output_buffer_size = size * size * bake_pixel_size;
 	float* ret = new float[bake_output_buffer_size];
 	memset(ret, 0, bake_output_buffer_size * sizeof(float));
-	int pass_filter = BAKE_FILTER_DIFFUSE_DIRECT | BAKE_FILTER_DIFFUSE_INDIRECT | BAKE_FILTER_COLOR;//BakePassFilterCombos::BAKE_FILTER_DIFFUSE_INDIRECT;
+	int pass_filter = BAKE_FILTER_INDIRECT;
 	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, shader_value_type, pass_filter, ras->get_bake_data(), ret);
 
 	const int channel = 4;

@@ -143,9 +143,9 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 	std::vector<bool> bool_main_sample_pixels;
 	bool_main_sample_pixels.resize(pixel_num, false);
 
-	for (float y = min_uv.y; y < max_uv.y + 0.0f; ++y)
+	for (float y = min_uv.y; y < max_uv.y; ++y)
 	{
-		for (float x = min_uv.x; x < max_uv.x + 0.0f; ++x)
+		for (float x = min_uv.x; x < max_uv.x; ++x)
 		{
 			//ccl::float2 curr_pixel = ccl::make_float2(std::fminf(x + 0.5f, max_uv.x - 0.005f), std::fminf(y + 0.5f, max_uv.y - 0.005f));
 			ccl::float2 curr_pixel = ccl::make_float2((int)x + 0.5f, (int)y + 0.5f);
@@ -155,7 +155,7 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 				ccl::float2 out_uv;
 				lm_toBarycentric(uv1, uv2, uv3, curr_pixel, out_uv);
 
-				int pixel_index = img_w * (int)((y + 0.0f)/m_multi_sample_grid_resolution) + (int)((x + 0.0f)/m_multi_sample_grid_resolution);
+				int pixel_index = img_w * (int)(y/m_multi_sample_grid_resolution) + (int)(x/m_multi_sample_grid_resolution);
 
 				if (bool_main_sample_pixels[pixel_index] == false)
 				{

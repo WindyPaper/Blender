@@ -333,10 +333,11 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 			int offset_index = 0;
 			if (sample > uvs_array_ele_size)
 			{
-				offset_index = ((sample / uvs_array_ele_size) - (int)(sample / uvs_array_ele_size)) * uvs_array_ele_size;
+				offset_index = (((sample+1) / uvs_array_ele_size) - (int)((sample+1) / uvs_array_ele_size)) * (uvs_array_ele_size - 1);
 			}
+			
 			u = uvs_array[uvs_array_offset + offset_index].x;
-			v = uvs_array[uvs_array_offset + offset_index].y;
+			v = uvs_array[uvs_array_offset + offset_index].y;			
 		}
 		u = bake_clamp_mirror_repeat(u + dudx*(filter_x - 0.5f) + dudy*(filter_y - 0.5f), 1.0f);
 		v = bake_clamp_mirror_repeat(v + dvdx*(filter_x - 0.5f) + dvdy*(filter_y - 0.5f), 1.0f - u);

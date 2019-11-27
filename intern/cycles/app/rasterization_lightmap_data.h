@@ -39,6 +39,7 @@ public:
 private:
 	ccl::BakeData* mp_baker_data;
 	int m_multi_sample_grid_resolution;
+	std::vector<bool> m_bool_main_sample_pixels;
 };
 
 #endif

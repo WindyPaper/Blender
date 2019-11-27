@@ -28,7 +28,7 @@ CCL_NAMESPACE_BEGIN
 class BakeData {
 public:
 	typedef std::vector<float2> UVArray;
-	typedef std::map<unsigned int, UVArray> PrimUVArray;
+	typedef std::unordered_map<unsigned int, UVArray> PrimUVArray;
 
 	BakeData(const int object, const size_t tri_offset, const size_t num_pixels);
 	~BakeData();
@@ -56,7 +56,7 @@ private:
 	vector<float>m_dvdy;
 
 	//Anti Aliasing	
-	std::map<int, PrimUVArray> BakeSamplePointsMap;
+	std::unordered_map<int, PrimUVArray> m_bake_sample_points_map;
 };
 
 class BakeManager {

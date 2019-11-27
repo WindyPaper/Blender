@@ -88,14 +88,14 @@ void BakeData::push_sample_uvs(int i, const float2& uv)
 {
 	assert(is_valid(i));
 
-	auto map_iter = BakeSamplePointsMap.find(i);
-	if (map_iter == BakeSamplePointsMap.end())
+	auto map_iter = m_bake_sample_points_map.find(i);
+	if (map_iter == m_bake_sample_points_map.end())
 	{
 		std::vector<float2> vec;
 		vec.push_back(uv);
 		PrimUVArray prim_uvarray;
 		prim_uvarray.insert(std::make_pair(m_primitive[i], vec));
-		BakeSamplePointsMap.insert(std::make_pair(i, prim_uvarray));
+		m_bake_sample_points_map.insert(std::make_pair(i, prim_uvarray));
 	}
 	else
 	{
@@ -117,8 +117,8 @@ void BakeData::push_sample_uvs(int i, const float2& uv)
 const BakeData::UVArray* BakeData::sample_uvs(int i) const
 {
 	int prim = m_primitive[i];
-	auto map_iter = BakeSamplePointsMap.find(i);
-	if (map_iter == BakeSamplePointsMap.end())
+	auto map_iter = m_bake_sample_points_map.find(i);
+	if (map_iter == m_bake_sample_points_map.end())
 	{
 		return nullptr;
 	}
@@ -316,7 +316,7 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 
 		if (shader_type == SHADER_EVAL_SH4)
 		{
-			memcpy(result, offset, d_output.size() * sizeof(float4));
+			memcpy(result + shader_offset * 12, offset, d_output.size() * sizeof(float4));
 		}
 		else
 		{

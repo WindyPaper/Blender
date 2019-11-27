@@ -139,9 +139,7 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 
 	ccl::float2 max_uv = ccl::max(ccl::max(uv1, uv2), uv3);
 	ccl::float2 min_uv = ccl::min(ccl::min(uv1, uv2), uv3);
-
-	std::vector<bool> bool_main_sample_pixels;
-	bool_main_sample_pixels.resize(pixel_num, false);
+	//m_bool_main_sample_pixels.resize(pixel_num, false);
 
 	for (float y = min_uv.y; y < max_uv.y; ++y)
 	{
@@ -157,11 +155,11 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 
 				int pixel_index = img_w * (int)(y/m_multi_sample_grid_resolution) + (int)(x/m_multi_sample_grid_resolution);
 
-				if (bool_main_sample_pixels[pixel_index] == false)
+				if (m_bool_main_sample_pixels[pixel_index] == false)
 				{
 					mp_baker_data->set(pixel_index, prim, &out_uv[0], uv_diff->dudx, uv_diff->dudy, uv_diff->dvdx, uv_diff->dvdy);
 
-					bool_main_sample_pixels[pixel_index] = true;
+					m_bool_main_sample_pixels[pixel_index] = true;
 				}
 				else
 				{
@@ -175,6 +173,7 @@ void RasterizationLightmapData::image_pixel_triangle_to_parameterization(const i
 void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const int mesh_num, const int img_w, const int img_h)
 {
 	const int pixel_num = img_w * img_h;
+	m_bool_main_sample_pixels.resize(pixel_num, false);
 
 	if (mp_baker_data == nullptr)
 	{

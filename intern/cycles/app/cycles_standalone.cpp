@@ -711,8 +711,8 @@ static void bake_light_map()
 	options.session->load_kernels();
 	options.session->update_scene();
 	Scene* scene = options.session->scene;
-	RasterizationLightmapData* ras = new RasterizationLightmapData(16);
-	const int size = 64;
+	RasterizationLightmapData* ras = new RasterizationLightmapData(4);
+	const int size = 1024;
 	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
 	Progress p;
 	int bake_pixel_size = 4;

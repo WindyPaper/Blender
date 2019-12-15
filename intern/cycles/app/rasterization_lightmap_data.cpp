@@ -179,13 +179,13 @@ void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const in
 	{
 		//hard code 0		
 		mp_baker_data = new ccl::BakeData(0, 0, pixel_num);
-	}
 
-	//init
-	float zero_v2[2] = { 0.0f, 0.0f };
-	for (int i = 0; i < pixel_num; ++i)
-	{
-		mp_baker_data->set(i, -1, zero_v2, 0.0f, 0.0f, 0.0f, 0.0f);
+		//init
+		float zero_v2[2] = { 0.0f, 0.0f };
+		for (int i = 0; i < pixel_num; ++i)
+		{
+			mp_baker_data->set(i, -1, zero_v2, 0.0f, 0.0f, 0.0f, 0.0f);
+		}
 	}	
 
 	for (int mesh_i = 0; mesh_i < mesh_num; ++mesh_i)
@@ -202,14 +202,14 @@ void RasterizationLightmapData::raster_triangle(const ccl::Mesh **mesh, const in
 			ccl::float2 uvs[3];
 
 			for (int t = 0; t < 3; ++t)
-			{
+			{				
 				uvs[t].x = uv_data[i * 3 + t].x * (float)(img_w * m_multi_sample_grid_resolution);// -(0.5f + 0.001f);
 				uvs[t].y = uv_data[i * 3 + t].y * (float)(img_h * m_multi_sample_grid_resolution);// -(0.5f + 0.001f);
 			}
 
 			bake_differentials((float*)& uvs[0], (float*)& uvs[1], (float*)& uvs[2], &out_uv_diff);
 
-			image_pixel_triangle_to_parameterization(img_w, img_h, i, &out_uv_diff, uvs[0], uvs[1], uvs[2]);
+			image_pixel_triangle_to_parameterization(img_w, img_h, i + mesh[mesh_i]->tri_offset, &out_uv_diff, uvs[0], uvs[1], uvs[2]);
 		}
 	}
 }

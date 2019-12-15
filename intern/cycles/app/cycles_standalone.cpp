@@ -54,6 +54,31 @@
 #include "GenerateMikkTangent.h"
 #include "rasterization_lightmap_data.h"
 
+#include <OpenEXR/IexBaseExc.h>
+#include <OpenEXR/IexThrowErrnoExc.h>
+#include <OpenEXR/ImfBoxAttribute.h>
+#include <OpenEXR/ImfChromaticitiesAttribute.h>
+#include <OpenEXR/ImfCompressionAttribute.h>
+#include <OpenEXR/ImfDeepFrameBuffer.h>
+#include <OpenEXR/ImfDeepScanLineInputPart.h>
+#include <OpenEXR/ImfDeepTiledInputPart.h>
+#include <OpenEXR/ImfDoubleAttribute.h>
+#include <OpenEXR/ImfEnvmapAttribute.h>
+#include <OpenEXR/ImfFloatAttribute.h>
+#include <OpenEXR/ImfInputPart.h>
+#include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfKeyCodeAttribute.h>
+#include <OpenEXR/ImfMatrixAttribute.h>
+#include <OpenEXR/ImfMultiPartInputFile.h>
+#include <OpenEXR/ImfPartType.h>
+#include <OpenEXR/ImfRationalAttribute.h>
+#include <OpenEXR/ImfStringAttribute.h>
+#include <OpenEXR/ImfStringVectorAttribute.h>
+#include <OpenEXR/ImfTiledInputPart.h>
+#include <OpenEXR/ImfTimeCodeAttribute.h>
+#include <OpenEXR/ImfVecAttribute.h>
+#include <OpenImageIO/thread.h>
+
 CCL_NAMESPACE_BEGIN
 
 struct Options {
@@ -133,7 +158,7 @@ static bool write_float_map(const float* pixels, int w, int h, int channels)
 	string msg = string_printf("Writing image %s", options.output_path.c_str());
 	session_print(msg);
 
-	unique_ptr<ImageOutput> out = unique_ptr<ImageOutput>(ImageOutput::create(options.output_path));
+	ImageOutput *out = ImageOutput::create(options.output_path);
 	if (!out) {
 		return false;
 	}
@@ -167,6 +192,9 @@ static bool write_float_map(const float* pixels, int w, int h, int channels)
 	//	pixels);    /* pixel stride */
 
 	out->close();
+	ImageOutput::destroy(out);
+	
+	Imf::setGlobalThreadCount(0);
 
 	return true;
 }
@@ -576,10 +604,7 @@ static void assimp_read_file(Scene *scene, std::string filename)
 
 			if (mesh_ptr->mTextureCoords[0])
 			{
-				aiVector3D* uv0 = mesh_ptr->mTextureCoords[0];
-				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
-				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
-				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+				aiVector3D* uv0 = mesh_ptr->mTextureCoords[0];				
 				fdata[tri_i * 3] = make_float3(uv0[iv1].x, uv0[iv1].y, uv0[iv1].z);
 				fdata[tri_i * 3 + 1] = make_float3(uv0[iv2].x, uv0[iv2].y, uv0[iv2].z);
 				fdata[tri_i * 3 + 2] = make_float3(uv0[iv3].x, uv0[iv3].y, uv0[iv3].z);
@@ -711,8 +736,8 @@ static void bake_light_map()
 	options.session->load_kernels();
 	options.session->update_scene();
 	Scene* scene = options.session->scene;
-	RasterizationLightmapData* ras = new RasterizationLightmapData(4);
-	const int size = 1024;
+	RasterizationLightmapData* ras = new RasterizationLightmapData(8);
+	const int size = 128;
 	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
 	Progress p;
 	int bake_pixel_size = 4;
@@ -1118,3 +1143,243 @@ int main(int argc, const char **argv)
 	system("pause");
 	return 0;
 }
+
+void assign_session_specific(const int w, const int h, const char* core_type)
+{
+	options.width = 0;
+	options.height = 0;
+	options.filepath = "";
+	options.session = NULL;
+	options.quiet = false;
+
+	/* device names */
+	string device_names = "";
+	string devicename = core_type;
+	bool list = false;
+
+	vector<DeviceType>& types = Device::available_types();
+
+	/* TODO(sergey): Here's a feedback loop happens: on the one hand we want
+	 * the device list to be printed in help message, on the other hand logging
+	 * is not initialized yet so we wouldn't have debug log happening in the
+	 * device initialization.
+	 */
+	foreach(DeviceType type, types) {
+		if (device_names != "")
+			device_names += ", ";
+
+		device_names += Device::string_from_type(type);
+	}
+
+	/* shading system */
+	string ssname = "svm";
+
+	options.session_params.background = true;
+	options.quiet = false;
+	options.session_params.samples = 4;
+	//options.output_path = "./unity_dll_test_image/";
+	options.output_path = "./Assets/out_render_image.tga";
+	options.width = w;
+	options.height = h;
+	bool debug = true;
+		
+	if (debug) {
+		util_logging_start();
+		util_logging_verbosity_set(1);
+	}	
+
+	if (ssname == "osl")
+		options.scene_params.shadingsystem = SHADINGSYSTEM_OSL;
+	else if (ssname == "svm")
+		options.scene_params.shadingsystem = SHADINGSYSTEM_SVM;
+
+	/* Use progressive rendering */
+	options.session_params.progressive = true;
+
+	/* find matching device */
+	DeviceType device_type = Device::type_from_string(devicename.c_str());
+	vector<DeviceInfo>& devices = Device::available_devices();
+	bool device_available = false;
+
+	foreach(DeviceInfo & device, devices) {
+		if (device_type == device.type) {
+			options.session_params.device = device;
+			device_available = true;
+			break;
+		}
+	}
+
+	/* handle invalid configurations */
+	if (options.session_params.device.type == DEVICE_NONE || !device_available) {
+		fprintf(stderr, "Unknown device: %s\n", devicename.c_str());
+		//exit(EXIT_FAILURE);
+	}
+	else if (options.session_params.samples < 0) {
+		fprintf(stderr, "Invalid number of samples: %d\n", options.session_params.samples);
+		//exit(EXIT_FAILURE);
+	}
+	else if (options.filepath == "") {
+		fprintf(stderr, "No file path specified\n");
+		//exit(EXIT_FAILURE);
+	}
+
+	/* For smoother Viewport */
+	options.session_params.start_resolution = 64;
+}
+
+static void unity_session_init()
+{
+	options.session_params.write_render_cb = write_render;
+	options.session = new Session(options.session_params);
+
+	if (options.session_params.background && !options.quiet)
+		options.session->progress.set_update_callback(function_bind(&session_print_status));
+#ifdef WITH_CYCLES_STANDALONE_GUI
+	else
+		options.session->progress.set_update_callback(function_bind(&view_redraw));
+#endif
+}
+
+static void internal_custom_scene(ccl::float3* vertex_array, ccl::float2* uvs_array, ccl::float2* lightmapuvs_array, ccl::float3* normal_array, int vertex_num,
+	int* index_array, int *mat_index, int triangle_num,
+	std::string *mat_name, std::string *diffuse_tex, int mat_num)
+{
+	ccl::Scene* scene = options.scene;
+	if (scene == NULL)
+	{
+		scene = new Scene(options.scene_params, options.session->device);
+		options.scene = scene;
+		options.session->scene = scene;
+
+		/* Calculate Viewplane */
+		options.scene->camera->compute_auto_viewplane();
+		Transform matrix;
+
+		matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
+		options.scene->camera->matrix = matrix;
+
+		fbx_add_default_shader(scene);
+	}
+
+	std::vector<int> cycles_shader_indexs(mat_num);
+	for (int i = 0; i < mat_num; ++i)
+	{
+		cycles_shader_indexs[i] = create_pbr_shader(scene, diffuse_tex[i], "", "");
+	}
+
+	bool smooth = true;
+
+	ccl::Mesh* p_cy_mesh = fbx_add_mesh(scene, transform_identity());
+	p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+
+	p_cy_mesh->verts.resize(vertex_num);
+
+	for (int i = 0; i < mat_num; ++i)
+	{
+		p_cy_mesh->used_shaders.push_back(scene->shaders[cycles_shader_indexs[i]]);
+	}
+
+	Attribute* attr_N = p_cy_mesh->attributes.add(ATTR_STD_VERTEX_NORMAL);
+	float3* N = attr_N->data_float3();
+
+	for (int i = 0; i < vertex_num; ++i, ++N)
+	{
+		p_cy_mesh->verts[i] = vertex_array[i];
+		*N = normal_array[i];
+	}
+
+	for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+	{			
+		p_cy_mesh->add_triangle(
+			index_array[tri_i * 3], 
+			index_array[tri_i * 3 + 1], 
+			index_array[tri_i * 3 + 2], 
+			mat_index[tri_i], smooth);
+	}
+
+	ustring name = ustring("UVMap");
+	Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
+	ustring lightmap_name = ustring("lightmap_uv");
+	Attribute* lightmap_attr = p_cy_mesh->attributes.add(ATTR_STD_UV, lightmap_name);
+	float3* fdata = attr->data_float3();
+	float3* lightmap_data = lightmap_attr->data_float3();
+	for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+	{
+		int iv1 = index_array[tri_i * 3];
+		int iv2 = index_array[tri_i * 3 + 1];
+		int iv3 = index_array[tri_i * 3 + 2];
+
+		if (uvs_array)
+		{
+
+
+			fdata[tri_i * 3] = make_float3(uvs_array[iv1].x, uvs_array[iv1].y, 1.0f);
+			fdata[tri_i * 3 + 1] = make_float3(uvs_array[iv2].x, uvs_array[iv2].y, 1.0f);
+			fdata[tri_i * 3 + 2] = make_float3(uvs_array[iv3].x, uvs_array[iv3].y, 1.0f);
+		}
+
+		if (lightmapuvs_array)
+		{
+			assert(lightmapuvs_array[iv1].x < 1.1f && lightmapuvs_array[iv1].x > -0.1f);
+			lightmap_data[tri_i * 3] = make_float3(lightmapuvs_array[iv1].x, lightmapuvs_array[iv1].y, 1.0f);
+			lightmap_data[tri_i * 3 + 1] = make_float3(lightmapuvs_array[iv2].x, lightmapuvs_array[iv2].y, 1.0f);
+			lightmap_data[tri_i * 3 + 2] = make_float3(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y, 1.0f);
+		}
+	}
+
+	create_mikk_tangent(p_cy_mesh);	
+}
+
+#define DLL_EXPORT __declspec(dllexport)
+
+extern "C"
+{
+	DLL_EXPORT bool init_cycles(const int w, const int h, const char *core_type)
+	{
+		util_logging_init("./unity_dll_log/");
+		path_init();
+		assign_session_specific(w, h, core_type);
+
+		unity_session_init();
+		//options.session->wait();
+		//session_exit();
+		
+		return true;
+	}
+
+	DLL_EXPORT int unity_add_mesh(float* vertex_array, float* uvs_array, float* lightmapuvs_array, float* normal_array, int vertex_num,
+		int* index_array, int* mat_index, int triangle_num,
+		const char** mat_name, const char** diffuse_tex, int mat_num)
+	{
+		std::string *mat_name_strings = new std::string[mat_num];
+		std::string *diffuse_tex_strings = new std::string[mat_num];
+		for (int i = 0; i < mat_num; ++i)
+		{
+			mat_name_strings[i] = mat_name[i];
+			diffuse_tex_strings[i] = diffuse_tex[i];
+		}
+
+		internal_custom_scene((ccl::float3*)vertex_array, (ccl::float2*)uvs_array, (ccl::float2*)lightmapuvs_array, (ccl::float3*)normal_array, vertex_num,
+			index_array, mat_index, triangle_num,
+			mat_name_strings, diffuse_tex_strings, mat_num);
+
+		delete[] mat_name_strings;
+		delete[] diffuse_tex_strings;
+
+		return 0;
+	}
+
+	DLL_EXPORT int bake_lightmap()
+	{
+		bake_light_map();		
+
+		//start_render_image();
+		//options.session->wait();
+
+		session_exit();
+		default_thread_pool()->clear_threads();
+		
+		return 0;
+	}
+}
+

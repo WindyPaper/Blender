@@ -194,7 +194,7 @@ bool BakeManager::bake(Device *device, DeviceScene *dscene, Scene *scene, Progre
 {
 	size_t num_pixels = bake_data->size();
 
-	scene->integrator->aa_samples = 512;
+	scene->integrator->aa_samples = 256;
 	int num_samples = aa_samples(scene, bake_data, shader_type);
 
 	/* calculate the total pixel samples for the progress bar */

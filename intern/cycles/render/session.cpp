@@ -82,6 +82,8 @@ Session::Session(const SessionParams& params_)
 
 	/* TODO(sergey): Check if it's indeed optimal value for the split kernel. */
 	max_closure_global = 1;
+
+	render_icb = function_null;
 }
 
 Session::~Session()
@@ -514,6 +516,14 @@ void Session::map_neighbor_tiles(RenderTile *tiles, Device *tile_device)
 	tiles[9] = tiles[4];
 }
 
+void Session::convert_buffer_from_half2float(float* dst, half* src, const int len)
+{
+	for (int i = 0; i < len; ++i)
+	{
+		dst[i] = half_to_float(src[i]);
+	}
+}
+
 void Session::unmap_neighbor_tiles(RenderTile *tiles, Device *tile_device)
 {
 	thread_scoped_lock tile_lock(tile_mutex);
@@ -644,6 +654,19 @@ void Session::run_cpu()
 		}
 
 		progress.set_update();
+
+		//Render result image call back
+		if (render_icb)
+		{
+			int w = tile_manager.state.buffer.full_width;
+			int h = tile_manager.state.buffer.full_height;
+			const int len = w * h * 4;
+			float* float_image = new float[len];
+			convert_buffer_from_half2float(float_image, (half*)display->rgba_half.copy_from_device(0, w, h), len);
+			render_icb(float_image, w, h, 0);
+
+			delete[] float_image;
+		}
 	}
 
 	if(!tiles_written)

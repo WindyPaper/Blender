@@ -779,10 +779,10 @@ static void session_init()
 	scene_init();
 	options.session->scene = options.scene;
 
-	//start_render_image();
+	start_render_image();
 	 
 	//For baking
-	bake_light_map();
+	//bake_light_map();
 }
 
 static void session_exit()
@@ -1174,7 +1174,7 @@ void assign_session_specific(const int w, const int h, const char* core_type)
 	/* shading system */
 	string ssname = "svm";
 
-	options.session_params.background = true;
+	options.session_params.background = false; //only for interactive rendering
 	options.quiet = false;
 	options.session_params.samples = 4;
 	//options.output_path = "./unity_dll_test_image/";
@@ -1334,6 +1334,16 @@ static void internal_custom_scene(ccl::float3* vertex_array, ccl::float2* uvs_ar
 
 extern "C"
 {
+	struct UnityRenderOptions
+	{
+		int width;
+		int height;
+		float* camera_pos;
+		float* euler_angle;
+
+		int sample_count;
+	};
+
 	DLL_EXPORT bool init_cycles(const int w, const int h, const char *core_type)
 	{
 		util_logging_init("./unity_dll_log/");
@@ -1379,6 +1389,41 @@ extern "C"
 		session_exit();
 		default_thread_pool()->clear_threads();
 		
+		return 0;
+	}
+
+	//typedef void (*render_image_cb)(const char* data, const int w, const int h, const int data_type);
+
+	DLL_EXPORT int interactive_pt_rendering(UnityRenderOptions u3d_render_options, Session::render_image_cb icb)
+	{
+		options.width = u3d_render_options.width;
+		options.height = u3d_render_options.height;
+		//Cycles camera is right hand coordinate, x for right direction, y for up.
+		ccl::Transform cam_pos = transform_translate(make_float3(u3d_render_options.camera_pos[0], u3d_render_options.camera_pos[1], u3d_render_options.camera_pos[2]));
+		ccl::Transform rotate_x = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[0]), make_float3(1.0f, 0.0f, 0.0f));
+		ccl::Transform rotate_y = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[1]), make_float3(0.0f, 1.0f, 0.0f));
+		ccl::Transform rotate_z = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[2]), make_float3(0.0f, 0.0f, 1.0f));
+		options.scene->camera->matrix = transform_identity() * cam_pos * rotate_x * rotate_y * rotate_z;
+		options.scene->camera->width = u3d_render_options.width;
+		options.scene->camera->height = u3d_render_options.height;
+		options.scene->camera->need_update = true;
+		options.scene->camera->need_device_update = true;
+
+		options.session_params.samples = u3d_render_options.sample_count;
+		options.session->reset(session_buffer_params(), options.session_params.samples);
+
+		start_render_image();
+		options.session->render_icb = icb;
+		options.session->wait();		
+
+		return 0;
+	}
+
+	DLL_EXPORT int release_cycles()
+	{
+		session_exit();
+		default_thread_pool()->clear_threads();
+
 		return 0;
 	}
 }

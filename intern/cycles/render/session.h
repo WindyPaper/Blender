@@ -101,7 +101,7 @@ public:
 		denoising_feature_strength = 0.0f;
 		denoising_relative_pca = false;
 
-		display_buffer_linear = false;
+		display_buffer_linear = true;
 
 		cancel_timeout = 0.1;
 		reset_timeout = 0.1;
@@ -151,6 +151,9 @@ public:
 	Stats stats;
 	Profiler profiler;
 
+	typedef void (*render_image_cb)(const float* data, const int w, const int h, const int data_type); //For unity interactive rendering call bcak
+	render_image_cb render_icb;
+
 	function<void(RenderTile&)> write_render_tile_cb;
 	function<void(RenderTile&, bool)> update_render_tile_cb;
 
@@ -196,6 +199,8 @@ protected:
 	void run_cpu();
 	bool draw_cpu(BufferParams& params, DeviceDrawParams& draw_params);
 	void reset_cpu(BufferParams& params, int samples);
+
+	void convert_buffer_from_half2float(float* dst, half* src, const int len);
 
 	void run_gpu();
 	bool draw_gpu(BufferParams& params, DeviceDrawParams& draw_params);

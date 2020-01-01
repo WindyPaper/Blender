@@ -1406,6 +1406,7 @@ extern "C"
 		options.scene->camera->matrix = transform_identity() * cam_pos * rotate_x * rotate_y * rotate_z;
 		options.scene->camera->width = u3d_render_options.width;
 		options.scene->camera->height = u3d_render_options.height;
+		options.scene->camera->compute_auto_viewplane();
 		options.scene->camera->need_update = true;
 		options.scene->camera->need_device_update = true;
 

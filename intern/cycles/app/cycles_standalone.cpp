@@ -1403,7 +1403,7 @@ extern "C"
 		ccl::Transform rotate_x = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[0]), make_float3(1.0f, 0.0f, 0.0f));
 		ccl::Transform rotate_y = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[1]), make_float3(0.0f, 1.0f, 0.0f));
 		ccl::Transform rotate_z = transform_rotate(DEG2RADF(u3d_render_options.euler_angle[2]), make_float3(0.0f, 0.0f, 1.0f));
-		options.scene->camera->matrix = transform_identity() * cam_pos * rotate_x * rotate_y * rotate_z;
+		options.scene->camera->matrix = cam_pos * rotate_y * rotate_z * rotate_x;
 		options.scene->camera->width = u3d_render_options.width;
 		options.scene->camera->height = u3d_render_options.height;
 		options.scene->camera->compute_auto_viewplane();

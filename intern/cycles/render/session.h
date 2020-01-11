@@ -151,7 +151,7 @@ public:
 	Stats stats;
 	Profiler profiler;
 
-	typedef void (*render_image_cb)(const float* data, const int w, const int h, const int data_type); //For unity interactive rendering call bcak
+	typedef void (*render_image_cb)(const half* data, const int w, const int h, const int data_type); //For unity interactive rendering call bcak
 	render_image_cb render_icb;
 
 	function<void(RenderTile&)> write_render_tile_cb;

@@ -248,7 +248,7 @@ void Session::run_gpu()
 					if(!pause)
 						break;
 				}
-			}
+			}			
 
 			if(progress.get_cancel())
 				break;
@@ -294,12 +294,22 @@ void Session::run_gpu()
 			progress.set_update();
 
 			/* wait for tonemap */
-			if(!params.background) {
-				while(gpu_need_tonemap) {
-					if(progress.get_cancel())
-						break;
+			if (render_icb == NULL)
+			{
+				if(!params.background) {
+					while(gpu_need_tonemap) {
+						if(progress.get_cancel())
+							break;
 
-					gpu_need_tonemap_cond.wait(buffers_lock);
+						gpu_need_tonemap_cond.wait(buffers_lock);
+					}
+				}
+			}
+			else
+			{ 
+				if (!params.background && gpu_need_tonemap)
+				{
+					tonemap(tile_manager.state.sample);
 				}
 			}
 
@@ -308,9 +318,20 @@ void Session::run_gpu()
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 
+			//Render result image call back
+			if (render_icb)
+			{
+				int w = tile_manager.state.buffer.full_width;
+				int h = tile_manager.state.buffer.full_height;				
+				half* p_pixel_data = (half*)display->rgba_half.copy_from_device(0, w, h);
+				render_icb(p_pixel_data, w, h, 0);
+			}
+
 			if(progress.get_cancel())
 				break;
 		}
+
+		
 	}
 
 	if(!tiles_written)
@@ -660,12 +681,7 @@ void Session::run_cpu()
 		{
 			int w = tile_manager.state.buffer.full_width;
 			int h = tile_manager.state.buffer.full_height;
-			const int len = w * h * 4;
-			float* float_image = new float[len];
-			convert_buffer_from_half2float(float_image, (half*)display->rgba_half.copy_from_device(0, w, h), len);
-			render_icb(float_image, w, h, 0);
-
-			delete[] float_image;
+			render_icb((half*)display->rgba_half.copy_from_device(0, w, h), w, h, 0);
 		}
 	}
 

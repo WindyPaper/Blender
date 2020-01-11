@@ -79,6 +79,8 @@
 #include <OpenEXR/ImfVecAttribute.h>
 #include <OpenImageIO/thread.h>
 
+#include <render/light.h>
+
 CCL_NAMESPACE_BEGIN
 
 struct Options {
@@ -1144,17 +1146,32 @@ int main(int argc, const char **argv)
 	return 0;
 }
 
-void assign_session_specific(const int w, const int h, const char* core_type)
+void assign_session_specific(const int w, const int h, const int render_device, const std::string &device_working_folder)
 {
-	options.width = 0;
-	options.height = 0;
 	options.filepath = "";
 	options.session = NULL;
 	options.quiet = false;
 
+
+	enum RenderDeviceOptions
+	{
+		CUDA = 0,
+		CPU = 1
+	};
+
 	/* device names */
 	string device_names = "";
-	string devicename = core_type;
+	string select_device_name;
+	switch (render_device)
+	{
+	case CUDA:
+		select_device_name = "CUDA";
+		break;
+	case CPU:
+		select_device_name = "CPU";
+		break;
+	}
+
 	bool list = false;
 
 	vector<DeviceType>& types = Device::available_types();
@@ -1173,8 +1190,10 @@ void assign_session_specific(const int w, const int h, const char* core_type)
 
 	/* shading system */
 	string ssname = "svm";
+	
 
-	options.session_params.background = false; //only for interactive rendering
+	options.session_params.background = false; //only for CPU interactive rendering
+	
 	options.quiet = false;
 	options.session_params.samples = 4;
 	//options.output_path = "./unity_dll_test_image/";
@@ -1197,7 +1216,7 @@ void assign_session_specific(const int w, const int h, const char* core_type)
 	options.session_params.progressive = true;
 
 	/* find matching device */
-	DeviceType device_type = Device::type_from_string(devicename.c_str());
+	DeviceType device_type = Device::type_from_string(select_device_name.c_str());
 	vector<DeviceInfo>& devices = Device::available_devices();
 	bool device_available = false;
 
@@ -1211,7 +1230,7 @@ void assign_session_specific(const int w, const int h, const char* core_type)
 
 	/* handle invalid configurations */
 	if (options.session_params.device.type == DEVICE_NONE || !device_available) {
-		fprintf(stderr, "Unknown device: %s\n", devicename.c_str());
+		fprintf(stderr, "Unknown device: %s\n", select_device_name.c_str());
 		//exit(EXIT_FAILURE);
 	}
 	else if (options.session_params.samples < 0) {
@@ -1311,8 +1330,6 @@ static void internal_custom_scene(ccl::float3* vertex_array, ccl::float2* uvs_ar
 
 		if (uvs_array)
 		{
-
-
 			fdata[tri_i * 3] = make_float3(uvs_array[iv1].x, uvs_array[iv1].y, 1.0f);
 			fdata[tri_i * 3 + 1] = make_float3(uvs_array[iv2].x, uvs_array[iv2].y, 1.0f);
 			fdata[tri_i * 3 + 2] = make_float3(uvs_array[iv3].x, uvs_array[iv3].y, 1.0f);
@@ -1320,7 +1337,7 @@ static void internal_custom_scene(ccl::float3* vertex_array, ccl::float2* uvs_ar
 
 		if (lightmapuvs_array)
 		{
-			assert(lightmapuvs_array[iv1].x < 1.1f && lightmapuvs_array[iv1].x > -0.1f);
+			//assert(lightmapuvs_array[iv1].x < 1.1f && lightmapuvs_array[iv1].x > -0.1f);
 			lightmap_data[tri_i * 3] = make_float3(lightmapuvs_array[iv1].x, lightmapuvs_array[iv1].y, 1.0f);
 			lightmap_data[tri_i * 3 + 1] = make_float3(lightmapuvs_array[iv2].x, lightmapuvs_array[iv2].y, 1.0f);
 			lightmap_data[tri_i * 3 + 2] = make_float3(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y, 1.0f);
@@ -1344,11 +1361,27 @@ extern "C"
 		int sample_count;
 	};
 
-	DLL_EXPORT bool init_cycles(const int w, const int h, const char *core_type)
+	struct CyclesInitOptions
 	{
-		util_logging_init("./unity_dll_log/");
-		path_init();
-		assign_session_specific(w, h, core_type);
+		int width;
+		int height;
+
+		int sample_count;
+
+		char device_working_folder[255];
+		int render_device;
+
+		int work_type; //RENDER / BAKDER
+	};
+
+	DLL_EXPORT bool init_cycles(CyclesInitOptions init_op)
+	{
+		//freopen("./my_test_log.txt", "w", stdout);		
+		FLAGS_alsologtostderr = 1;
+		google::SetLogDestination(0, "my_test_log.txt");
+		util_logging_init("./");
+		path_init(init_op.device_working_folder);
+		assign_session_specific(init_op.width, init_op.height, init_op.render_device, init_op.device_working_folder);
 
 		unity_session_init();
 		//options.session->wait();
@@ -1379,12 +1412,54 @@ extern "C"
 		return 0;
 	}
 
+	DLL_EXPORT int unity_add_light(const char* name, float intensity, float radius, float* color, float* dir, float* pos, int type)
+	{
+		//create light
+		ccl::Light* l = new Light();
+		l->use_mis = true;
+		l->dir = *(ccl::float3*)dir;
+		l->size = radius;
+		l->co = *(ccl::float3*)(pos);
+
+		/*
+		//The type of a Light.
+		Spot = 0,
+		Directional = 1,
+		Point = 2,
+		Area = 3,
+		Disc = 4
+		*/
+		if (type == 1)
+		{
+			l->type = LIGHT_DISTANT;
+		}
+		else if (type == 2)
+		{
+			l->type = LIGHT_POINT;
+		}		
+
+		//create light shader
+		ShaderGraph* graph = new ShaderGraph();
+		EmissionNode* emission = new EmissionNode();
+		emission->color = *(ccl::float3*)color;
+		emission->strength = intensity;
+		graph->add(emission);
+		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+		Shader* p_lshader = new Shader();
+		p_lshader->name = name;
+		p_lshader->graph = graph;
+		options.scene->shaders.push_back(p_lshader);
+
+		//add to scene
+		l->shader = p_lshader;
+		options.scene->lights.push_back(l);
+
+		return 0;
+	}
+
 	DLL_EXPORT int bake_lightmap()
 	{
 		bake_light_map();		
-
-		//start_render_image();
-		//options.session->wait();
 
 		session_exit();
 		default_thread_pool()->clear_threads();

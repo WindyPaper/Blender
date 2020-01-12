@@ -1,6 +1,4 @@
 /*
- * Copyright 2016, Blender Foundation.
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -15,35 +13,47 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
+ * Copyright 2016, Blender Foundation.
  */
 
-/** \file blender/draw/intern/draw_manager_text.h
- *  \ingroup draw
+/** \file
+ * \ingroup draw
  */
 
 #ifndef __DRAW_MANAGER_TEXT_H__
 #define __DRAW_MANAGER_TEXT_H__
 
+struct ARegion;
 struct DRWTextStore;
+struct Object;
+struct UnitSettings;
+struct View3D;
 
 struct DRWTextStore *DRW_text_cache_create(void);
 void DRW_text_cache_destroy(struct DRWTextStore *dt);
 
-void DRW_text_cache_add(
-        struct DRWTextStore *dt,
-        const float co[3],
-        const char *str, const int str_len,
-        short xoffs, short yoffs, short flag,
-        const uchar col[4]);
+void DRW_text_cache_add(struct DRWTextStore *dt,
+                        const float co[3],
+                        const char *str,
+                        const int str_len,
+                        short xoffs,
+                        short yoffs,
+                        short flag,
+                        const uchar col[4]);
 
-void DRW_text_cache_draw(struct DRWTextStore *dt, struct ARegion *ar);
+void DRW_text_cache_draw(struct DRWTextStore *dt, struct ARegion *ar, struct View3D *v3d);
+
+void DRW_text_edit_mesh_measure_stats(struct ARegion *ar,
+                                      struct View3D *v3d,
+                                      struct Object *ob,
+                                      const struct UnitSettings *unit);
 
 enum {
-	DRW_TEXT_CACHE_ASCII        = (1 << 0),
-	DRW_TEXT_CACHE_GLOBALSPACE  = (1 << 1),
-	DRW_TEXT_CACHE_LOCALCLIP    = (1 << 2),
-	/* reference the string by pointer */
-	DRW_TEXT_CACHE_STRING_PTR   = (1 << 3),
+  DRW_TEXT_CACHE_ASCII = (1 << 0),
+  DRW_TEXT_CACHE_GLOBALSPACE = (1 << 1),
+  DRW_TEXT_CACHE_LOCALCLIP = (1 << 2),
+  /* reference the string by pointer */
+  DRW_TEXT_CACHE_STRING_PTR = (1 << 3),
 };
 
 /* draw_manager.c */

@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <limits>
+#include <algorithm>
 
 AUD_NAMESPACE_BEGIN
 
@@ -97,12 +98,15 @@ void ChannelMapperReader::calculateMapping()
 	for(int i = 0; i < m_source_channels * m_target_channels; i++)
 		m_mapping[i] = 0;
 
-	const Channel* source_channels = CHANNEL_MAPS[m_source_channels - 1];
-	const Channel* target_channels = CHANNEL_MAPS[m_target_channels - 1];
+	const Channels source_channel_count = std::min(m_source_channels, CHANNELS_SURROUND71);
+	const Channels target_channel_count = std::min(m_target_channels, CHANNELS_SURROUND71);
+
+	const Channel* source_channels = CHANNEL_MAPS[source_channel_count - 1];
+	const Channel* target_channels = CHANNEL_MAPS[target_channel_count - 1];
 
 	int lfe = -1;
 
-	for(int i = 0; i < m_target_channels; i++)
+	for(int i = 0; i < target_channel_count; i++)
 	{
 		if(target_channels[i] == CHANNEL_LFE)
 		{
@@ -111,16 +115,16 @@ void ChannelMapperReader::calculateMapping()
 		}
 	}
 
-	const float* source_angles = CHANNEL_ANGLES[m_source_channels - 1];
-	const float* target_angles = CHANNEL_ANGLES[m_target_channels - 1];
+	const float* source_angles = CHANNEL_ANGLES[source_channel_count - 1];
+	const float* target_angles = CHANNEL_ANGLES[target_channel_count - 1];
 
-	if(m_source_channels == CHANNELS_MONO)
+	if(source_channel_count == CHANNELS_MONO)
 		source_angles = &m_mono_angle;
 
 	int channel_left, channel_right;
 	float angle_left, angle_right, angle;
 
-	for(int i = 0; i < m_source_channels; i++)
+	for(int i = 0; i < source_channel_count; i++)
 	{
 		if(source_channels[i] == CHANNEL_LFE)
 		{
@@ -134,7 +138,7 @@ void ChannelMapperReader::calculateMapping()
 		angle_left = -2 * M_PI;
 		angle_right = 2 * M_PI;
 
-		for(int j = 0; j < m_target_channels; j++)
+		for(int j = 0; j < target_channel_count; j++)
 		{
 			if(j == lfe)
 				continue;
@@ -296,72 +300,77 @@ const Channel* ChannelMapperReader::CHANNEL_MAPS[] =
 	ChannelMapperReader::SURROUND71_MAP
 };
 
+constexpr float deg2rad(double angle)
+{
+	return float(angle * M_PI / 180.0);
+}
+
 const float ChannelMapperReader::MONO_ANGLES[] =
 {
-	0.0f * M_PI / 180.0f
+	deg2rad(0.0)
 };
 
 const float ChannelMapperReader::STEREO_ANGLES[] =
 {
-	-90.0f * M_PI / 180.0f,
-	 90.0f * M_PI / 180.0f
+	deg2rad(-90.0),
+	deg2rad( 90.0)
 };
 
 const float ChannelMapperReader::STEREO_LFE_ANGLES[] =
 {
-	-90.0f * M_PI / 180.0f,
-	 90.0f * M_PI / 180.0f,
-	  0.0f * M_PI / 180.0f
+	deg2rad(-90.0),
+	deg2rad( 90.0),
+	deg2rad(  0.0)
 };
 
 const float ChannelMapperReader::SURROUND4_ANGLES[] =
 {
-	 -45.0f * M_PI / 180.0f,
-	  45.0f * M_PI / 180.0f,
-	-135.0f * M_PI / 180.0f,
-	 135.0f * M_PI / 180.0f
+	deg2rad( -45.0),
+	deg2rad(  45.0),
+	deg2rad(-135.0),
+	deg2rad( 135.0)
 };
 
 const float ChannelMapperReader::SURROUND5_ANGLES[] =
 {
-	 -30.0f * M_PI / 180.0f,
-	  30.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	-110.0f * M_PI / 180.0f,
-	 110.0f * M_PI / 180.0f
+	deg2rad( -30.0),
+	deg2rad(  30.0),
+	deg2rad(   0.0),
+	deg2rad(-110.0),
+	deg2rad( 110.0)
 };
 
 const float ChannelMapperReader::SURROUND51_ANGLES[] =
 {
-	  -30.0f * M_PI / 180.0f,
-	   30.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	-110.0f * M_PI / 180.0f,
-	 110.0f * M_PI / 180.0f
+	deg2rad( -30.0),
+	deg2rad(  30.0),
+	deg2rad(   0.0),
+	deg2rad(   0.0),
+	deg2rad(-110.0),
+	deg2rad( 110.0)
 };
 
 const float ChannelMapperReader::SURROUND61_ANGLES[] =
 {
-	  -30.0f * M_PI / 180.0f,
-	   30.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	 180.0f * M_PI / 180.0f,
-	-110.0f * M_PI / 180.0f,
-	 110.0f * M_PI / 180.0f
+	deg2rad( -30.0),
+	deg2rad(  30.0),
+	deg2rad(   0.0),
+	deg2rad(   0.0),
+	deg2rad( 180.0),
+	deg2rad(-110.0),
+	deg2rad( 110.0)
 };
 
 const float ChannelMapperReader::SURROUND71_ANGLES[] =
 {
-	  -30.0f * M_PI / 180.0f,
-	   30.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	   0.0f * M_PI / 180.0f,
-	-110.0f * M_PI / 180.0f,
-	 110.0f * M_PI / 180.0f,
-	-150.0f * M_PI / 180.0f,
-	 150.0f * M_PI / 180.0f
+	deg2rad( -30.0),
+	deg2rad(  30.0),
+	deg2rad(   0.0),
+	deg2rad(   0.0),
+	deg2rad(-110.0),
+	deg2rad( 110.0),
+	deg2rad(-150.0),
+	deg2rad( 150.0)
 };
 
 const float* ChannelMapperReader::CHANNEL_ANGLES[] =

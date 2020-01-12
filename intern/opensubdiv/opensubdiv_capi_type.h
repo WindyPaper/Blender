@@ -26,12 +26,12 @@ extern "C" {
 // Keep this a bitmask os it's possible to pass available
 // evaluators to Blender.
 typedef enum eOpenSubdivEvaluator {
-  OPENSUBDIV_EVALUATOR_CPU                     = (1 << 0),
-  OPENSUBDIV_EVALUATOR_OPENMP                  = (1 << 1),
-  OPENSUBDIV_EVALUATOR_OPENCL                  = (1 << 2),
-  OPENSUBDIV_EVALUATOR_CUDA                    = (1 << 3),
+  OPENSUBDIV_EVALUATOR_CPU = (1 << 0),
+  OPENSUBDIV_EVALUATOR_OPENMP = (1 << 1),
+  OPENSUBDIV_EVALUATOR_OPENCL = (1 << 2),
+  OPENSUBDIV_EVALUATOR_CUDA = (1 << 3),
   OPENSUBDIV_EVALUATOR_GLSL_TRANSFORM_FEEDBACK = (1 << 4),
-  OPENSUBDIV_EVALUATOR_GLSL_COMPUTE            = (1 << 5),
+  OPENSUBDIV_EVALUATOR_GLSL_COMPUTE = (1 << 5),
 } eOpenSubdivEvaluator;
 
 typedef enum OpenSubdiv_SchemeType {
@@ -57,6 +57,13 @@ typedef enum OpenSubdiv_FVarLinearInterpolation {
   OSD_FVAR_LINEAR_INTERPOLATION_BOUNDARIES,
   OSD_FVAR_LINEAR_INTERPOLATION_ALL,
 } OpenSubdiv_FVarLinearInterpolation;
+
+typedef struct OpenSubdiv_PatchCoord {
+  int ptex_face;
+
+  // Parametric location on patch.
+  float u, v;
+} OpenSubdiv_PatchCoord;
 
 #ifdef __cplusplus
 }

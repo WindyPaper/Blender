@@ -47,12 +47,12 @@ def bake_action(
     :return: an action or None
     :rtype: :class:`bpy.types.Action`
     """
-    if not (do_pose or do_object):
+    if not (kwargs.get("do_pose") or kwargs.get("do_object")):
         return None
 
     action, = bake_action_objects(
         [(obj, action)],
-        frames,
+        frames=frames,
         **kwargs,
     )
     return action
@@ -104,7 +104,7 @@ def bake_action_objects_iter(
         if frame is None:
             break
         scene.frame_set(frame)
-        scene.update()
+        bpy.context.view_layer.update()
         for iter in iter_all:
             iter.send(frame)
     scene.frame_set(frame_back)
@@ -158,7 +158,8 @@ def bake_action_iter(
         'bbone_curveinx', 'bbone_curveoutx',
         'bbone_curveiny', 'bbone_curveouty',
         'bbone_rollin', 'bbone_rollout',
-        'bbone_scalein', 'bbone_scaleout',
+        'bbone_scaleinx', 'bbone_scaleoutx',
+        'bbone_scaleiny', 'bbone_scaleouty',
         'bbone_easein', 'bbone_easeout'
     ]
 
@@ -187,7 +188,7 @@ def bake_action_iter(
                 parent = obj.parent
                 matrix = obj.matrix_basis
                 if parent:
-                    return parent.matrix_world * matrix
+                    return parent.matrix_world @ matrix
                 else:
                     return matrix.copy()
     else:
@@ -196,7 +197,7 @@ def bake_action_iter(
                 parent = obj.parent
                 matrix = obj.matrix_world
                 if parent:
-                    return parent.matrix_world.inverted_safe() * matrix
+                    return parent.matrix_world.inverted_safe() @ matrix
                 else:
                     return matrix.copy()
         else:
@@ -267,8 +268,9 @@ def bake_action_iter(
                 while pbone.constraints:
                     pbone.constraints.remove(pbone.constraints[0])
 
-            # create compatible eulers
+            # Create compatible eulers, quats.
             euler_prev = None
+            quat_prev = None
 
             for (f, matrix, bbones) in pose_info:
                 pbone.matrix_basis = matrix[name].copy()
@@ -277,6 +279,14 @@ def bake_action_iter(
 
                 rotation_mode = pbone.rotation_mode
                 if rotation_mode == 'QUATERNION':
+                    if quat_prev is not None:
+                        quat = pbone.rotation_quaternion.copy()
+                        quat.make_compatible(quat_prev)
+                        pbone.rotation_quaternion = quat
+                        quat_prev = quat
+                        del quat
+                    else:
+                        quat_prev = pbone.rotation_quaternion.copy()
                     pbone.keyframe_insert("rotation_quaternion", index=-1, frame=f, group=name, options=options)
                 elif rotation_mode == 'AXIS_ANGLE':
                     pbone.keyframe_insert("rotation_axis_angle", index=-1, frame=f, group=name, options=options)
@@ -307,8 +317,9 @@ def bake_action_iter(
             while obj.constraints:
                 obj.constraints.remove(obj.constraints[0])
 
-        # create compatible eulers
+        # Create compatible eulers, quats.
         euler_prev = None
+        quat_prev = None
 
         for (f, matrix) in obj_info:
             name = "Action Bake"  # XXX: placeholder
@@ -318,6 +329,15 @@ def bake_action_iter(
 
             rotation_mode = obj.rotation_mode
             if rotation_mode == 'QUATERNION':
+                if quat_prev is not None:
+                    quat = obj.rotation_quaternion.copy()
+                    quat.make_compatible(quat_prev)
+                    obj.rotation_quaternion = quat
+                    quat_prev = quat
+                    del quat
+                    print ("quat_prev", quat_prev)
+                else:
+                    quat_prev = obj.rotation_quaternion.copy()
                 obj.keyframe_insert("rotation_quaternion", index=-1, frame=f, group=name, options=options)
             elif rotation_mode == 'AXIS_ANGLE':
                 obj.keyframe_insert("rotation_axis_angle", index=-1, frame=f, group=name, options=options)

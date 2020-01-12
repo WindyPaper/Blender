@@ -13,9 +13,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# Contributor(s): Jacques Beaurain, Dalai Felinto.
-#
 # ***** END GPL LICENSE BLOCK *****
 
 # --env-system-scripts allows to run without the install target.
@@ -28,36 +25,25 @@ set(TEST_OUT_DIR ${CMAKE_BINARY_DIR}/tests)
 # ugh, any better way to do this on testing only?
 execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${TEST_OUT_DIR})
 
-#~	if(NOT IS_DIRECTORY ${TEST_SRC_DIR})
-#~		message(FATAL_ERROR "CMake test directory not found!")
-#~	endif()
-
-# all calls to blender use this
-if(APPLE)
-	if(${CMAKE_GENERATOR} MATCHES "Xcode")
-		set(TEST_BLENDER_EXE ${EXECUTABLE_OUTPUT_PATH}/Debug/blender.app/Contents/MacOS/blender)
-	else()
-		set(TEST_BLENDER_EXE ${EXECUTABLE_OUTPUT_PATH}/blender.app/Contents/MacOS/blender)
-	endif()
-else()
-	set(TEST_BLENDER_EXE ${EXECUTABLE_OUTPUT_PATH}/blender)
-endif()
+# if(NOT IS_DIRECTORY ${TEST_SRC_DIR})
+#   message(FATAL_ERROR "CMake test directory not found!")
+# endif()
 
 # for testing with valgrind prefix: valgrind --track-origins=yes --error-limit=no
-set(TEST_BLENDER_EXE ${TEST_BLENDER_EXE} --background -noaudio --factory-startup --env-system-scripts ${CMAKE_SOURCE_DIR}/release/scripts)
+set(TEST_BLENDER_EXE $<TARGET_FILE:blender> --background -noaudio --factory-startup --env-system-scripts ${CMAKE_SOURCE_DIR}/release/scripts)
 
 
 # ------------------------------------------------------------------------------
 
 macro(VIEW_LAYER_TEST test_name)
-	# Adds ${CMAKE_CURRENT_LIST_DIR} to sys.path so that the tests can import
-	# things from view_layer_common.py
-	add_test(view_layer_${test_name} ${TEST_BLENDER_EXE}
-		--python-expr "import sys; sys.path.append('${CMAKE_CURRENT_LIST_DIR}')"
-		--python-exit-code 1
-		--python ${CMAKE_CURRENT_LIST_DIR}/test_${test_name}.py --
-		--testdir="${TEST_SRC_DIR}/layers"
-	)
+  # Adds ${CMAKE_CURRENT_LIST_DIR} to sys.path so that the tests can import
+  # things from view_layer_common.py
+  add_test(view_layer_${test_name} ${TEST_BLENDER_EXE}
+    --python-expr "import sys; sys.path.append('${CMAKE_CURRENT_LIST_DIR}')"
+    --python-exit-code 1
+    --python ${CMAKE_CURRENT_LIST_DIR}/test_${test_name}.py --
+    --testdir="${TEST_SRC_DIR}/layers"
+  )
 endmacro()
 
 VIEW_LAYER_TEST(active_collection)
@@ -65,15 +51,15 @@ VIEW_LAYER_TEST(background_set)
 VIEW_LAYER_TEST(collection_new_sync)
 VIEW_LAYER_TEST(collection_rename_a)
 VIEW_LAYER_TEST(collection_rename_b)
-#VIEW_LAYER_TEST(evaluation_render_settings_a)
-#VIEW_LAYER_TEST(evaluation_render_settings_b)
-#VIEW_LAYER_TEST(evaluation_render_settings_c)
-#VIEW_LAYER_TEST(evaluation_render_settings_d)
-#VIEW_LAYER_TEST(evaluation_render_settings_e)
-#VIEW_LAYER_TEST(evaluation_render_settings_f)
-#VIEW_LAYER_TEST(evaluation_render_settings_g)
-#VIEW_LAYER_TEST(evaluation_render_settings_h)
-#VIEW_LAYER_TEST(evaluation_render_settings_i)
+# VIEW_LAYER_TEST(evaluation_render_settings_a)
+# VIEW_LAYER_TEST(evaluation_render_settings_b)
+# VIEW_LAYER_TEST(evaluation_render_settings_c)
+# VIEW_LAYER_TEST(evaluation_render_settings_d)
+# VIEW_LAYER_TEST(evaluation_render_settings_e)
+# VIEW_LAYER_TEST(evaluation_render_settings_f)
+# VIEW_LAYER_TEST(evaluation_render_settings_g)
+# VIEW_LAYER_TEST(evaluation_render_settings_h)
+# VIEW_LAYER_TEST(evaluation_render_settings_i)
 VIEW_LAYER_TEST(evaluation_visibility_a)
 VIEW_LAYER_TEST(evaluation_visibility_b)
 VIEW_LAYER_TEST(evaluation_visibility_c)

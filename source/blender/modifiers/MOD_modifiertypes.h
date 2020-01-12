@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -14,14 +12,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * Contributor(s): Ben Batt
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file MOD_modifiertypes.h
- *  \ingroup modifiers
+/** \file
+ * \ingroup modifiers
  */
 
 #ifndef __MOD_MODIFIERTYPES_H__
@@ -62,7 +56,7 @@ extern ModifierTypeInfo modifierType_Mask;
 extern ModifierTypeInfo modifierType_SimpleDeform;
 extern ModifierTypeInfo modifierType_Multires;
 extern ModifierTypeInfo modifierType_Surface;
-extern ModifierTypeInfo modifierType_Smoke;
+extern ModifierTypeInfo modifierType_Fluid;
 extern ModifierTypeInfo modifierType_ShapeKey;
 extern ModifierTypeInfo modifierType_Solidify;
 extern ModifierTypeInfo modifierType_Screw;
@@ -81,6 +75,7 @@ extern ModifierTypeInfo modifierType_UVWarp;
 extern ModifierTypeInfo modifierType_MeshCache;
 extern ModifierTypeInfo modifierType_LaplacianDeform;
 extern ModifierTypeInfo modifierType_Wireframe;
+extern ModifierTypeInfo modifierType_Weld;
 extern ModifierTypeInfo modifierType_DataTransfer;
 extern ModifierTypeInfo modifierType_NormalEdit;
 extern ModifierTypeInfo modifierType_CorrectiveSmooth;
@@ -91,4 +86,4 @@ extern ModifierTypeInfo modifierType_WeightedNormal;
 /* MOD_util.c */
 void modifier_type_init(ModifierTypeInfo *types[]);
 
-#endif  /* __MOD_MODIFIERTYPES_H__ */
+#endif /* __MOD_MODIFIERTYPES_H__ */

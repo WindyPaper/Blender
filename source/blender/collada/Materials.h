@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -14,14 +12,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * Contributor(s): Chingiz Dyussenov, Arystanbek Dyussenov, Nathan Letwory.
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifndef __MATERIAL_H__
-#define __MATERIAL_H__
+#ifndef __MATERIALS_H__
+#define __MATERIALS_H__
 
 #include <map>
 #include <string>
@@ -37,48 +31,46 @@ extern "C" {
 #include "collada_utils.h"
 #include "COLLADAFWEffectCommon.h"
 
-typedef enum BC_pbr_inputs {
-	BC_PBR_DIFFUSE = 0,
-	BC_PBR_METALLIC = 4,
-	BC_PBR_IOR = 14
-} BC_pbr_inputs;
-
 typedef std::map<std::string, bNode *> NodeMap;
 
 class MaterialNode {
 
-private:
-	bContext *mContext;
-	Material *material;
-	COLLADAFW::EffectCommon *effect;
-	UidImageMap *uid_image_map = nullptr;
-	KeyImageMap *key_image_map = nullptr;
+ private:
+  bContext *mContext;
+  Material *material;
+  COLLADAFW::EffectCommon *effect;
+  UidImageMap *uid_image_map = nullptr;
+  KeyImageMap *key_image_map = nullptr;
 
-	NodeMap node_map;
-	bNodeTree *ntree;
+  NodeMap node_map;
+  bNodeTree *ntree;
 
-	bNode *shader_node;
-	bNode *output_node;
+  bNode *shader_node;
+  bNode *output_node;
 
-	bNodeTree *prepare_material_nodetree();
-	bNode *add_node(int node_type, int locx, int locy, std::string label);
-	void add_link(bNode *from_node, int from_index, bNode *to_node, int to_index);
-	bNode *add_texture_node(COLLADAFW::ColorOrTexture &cot, int locx, int locy, std::string label);
-	void setShaderType();
+  bNodeTree *prepare_material_nodetree();
+  bNode *add_node(int node_type, int locx, int locy, std::string label);
+  void add_link(bNode *from_node, int from_index, bNode *to_node, int to_index);
+  bNode *add_texture_node(COLLADAFW::ColorOrTexture &cot, int locx, int locy, std::string label);
+  void setShaderType();
 
-public:
-	MaterialNode(bContext *C, COLLADAFW::EffectCommon *ef, Material *ma, UidImageMap &uid_image_map);
-	MaterialNode(bContext *C, Material *ma, KeyImageMap &key_image_map);
-	void set_diffuse(COLLADAFW::ColorOrTexture &cot, std::string label);
-	Image *get_diffuse_image();
-	void set_specular(COLLADAFW::ColorOrTexture &cot, std::string label);
-	void set_ambient(COLLADAFW::ColorOrTexture &cot, std::string label);
-	void set_reflective(COLLADAFW::ColorOrTexture &cot, std::string label);
-	void set_emission(COLLADAFW::ColorOrTexture &cot, std::string label);
-	void set_opacity(COLLADAFW::ColorOrTexture &cot, std::string label);
-	void set_reflectivity(float val);
-	void set_ior(float val);
+ public:
+  MaterialNode(bContext *C, COLLADAFW::EffectCommon *ef, Material *ma, UidImageMap &uid_image_map);
+  MaterialNode(bContext *C, Material *ma, KeyImageMap &key_image_map);
+  Image *get_diffuse_image();
 
+  void set_diffuse(COLLADAFW::ColorOrTexture &cot);
+  void set_specular(COLLADAFW::ColorOrTexture &cot);
+  void set_ambient(COLLADAFW::ColorOrTexture &cot);
+  void set_reflective(COLLADAFW::ColorOrTexture &cot);
+  void set_emission(COLLADAFW::ColorOrTexture &cot);
+  void set_opacity(COLLADAFW::ColorOrTexture &cot);
+  void set_reflectivity(COLLADAFW::FloatOrParam &val);
+  void set_shininess(COLLADAFW::FloatOrParam &val);
+  void set_ior(COLLADAFW::FloatOrParam &val);
+  void set_alpha(COLLADAFW::EffectCommon::OpaqueMode mode,
+                 COLLADAFW::ColorOrTexture &cot,
+                 COLLADAFW::FloatOrParam &val);
 };
 
-#endif
+#endif /* __MATERIALS_H__ */

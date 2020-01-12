@@ -19,8 +19,15 @@
 # <pep8 compliant>
 
 import bpy
-from bpy.types import Menu, Operator, Panel, WindowManager
-from bpy.props import StringProperty, BoolProperty
+from bpy.types import (
+    Menu,
+    Operator,
+    WindowManager,
+)
+from bpy.props import (
+    BoolProperty,
+    StringProperty,
+)
 
 # For preset popover menu
 WindowManager.preset_name = StringProperty(
@@ -77,6 +84,7 @@ class AddPresetBase:
 
     def execute(self, context):
         import os
+        from bpy.utils import is_path_builtin
 
         if hasattr(self, "pre_cb"):
             self.pre_cb(context)
@@ -183,6 +191,11 @@ class AddPresetBase:
             if not filepath:
                 return {'CANCELLED'}
 
+            # Do not remove bundled presets
+            if is_path_builtin(filepath):
+                self.report({'WARNING'}, "You can't remove the default presets")
+                return {'CANCELLED'}
+
             try:
                 if hasattr(self, "remove"):
                     self.remove(context, filepath)
@@ -202,10 +215,10 @@ class AddPresetBase:
 
         return {'FINISHED'}
 
-    def check(self, context):
+    def check(self, _context):
         self.name = self.as_filename(self.name.strip())
 
-    def invoke(self, context, event):
+    def invoke(self, context, _event):
         if not (self.remove_active or self.remove_name):
             wm = context.window_manager
             return wm.invoke_props_dialog(self)
@@ -261,40 +274,6 @@ class ExecutePreset(Operator):
             preset_class.post_cb(context)
 
         return {'FINISHED'}
-
-
-class PresetMenu(Panel):
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'HEADER'
-    bl_label = "Presets"
-    path_menu = Menu.path_menu
-
-    @classmethod
-    def draw_panel_header(cls, layout):
-        layout.emboss = 'NONE'
-        layout.popover(
-            panel=cls.__name__,
-            icon='PRESET',
-            text="",
-        )
-
-    @classmethod
-    def draw_menu(cls, layout, text=None):
-        if text is None:
-            text = cls.bl_label
-
-        layout.popover(
-            panel=cls.__name__,
-            icon='PRESET',
-            text=text,
-        )
-
-    def draw(self, context):
-        layout = self.layout
-        layout.emboss = 'PULLDOWN_MENU'
-        layout.operator_context = 'EXEC_DEFAULT'
-
-        Menu.draw_preset(self, context)
 
 
 class AddPresetRender(AddPresetBase, Operator):
@@ -382,12 +361,18 @@ class AddPresetCloth(AddPresetBase, Operator):
     ]
 
     preset_values = [
-        "cloth.settings.air_damping",
-        "cloth.settings.bending_stiffness",
-        "cloth.settings.mass",
         "cloth.settings.quality",
-        "cloth.settings.spring_damping",
-        "cloth.settings.structural_stiffness",
+        "cloth.settings.mass",
+        "cloth.settings.air_damping",
+        "cloth.settings.bending_model",
+        "cloth.settings.tension_stiffness",
+        "cloth.settings.compression_stiffness",
+        "cloth.settings.shear_stiffness",
+        "cloth.settings.bending_stiffness",
+        "cloth.settings.tension_damping",
+        "cloth.settings.compression_damping",
+        "cloth.settings.shear_damping",
+        "cloth.settings.bending_damping",
     ]
 
     preset_subdir = "cloth"
@@ -397,16 +382,16 @@ class AddPresetFluid(AddPresetBase, Operator):
     """Add or remove a Fluid Preset"""
     bl_idname = "fluid.preset_add"
     bl_label = "Add Fluid Preset"
-    preset_menu = "FLUID_PT_presets"
+    preset_menu = "FLUID_MT_presets"
 
     preset_defines = [
         "fluid = bpy.context.fluid"
-    ]
+        ]
 
     preset_values = [
-        "fluid.settings.viscosity_base",
-        "fluid.settings.viscosity_exponent",
-    ]
+        "fluid.domain_settings.viscosity_base",
+        "fluidanta.domain_settings.viscosity_exponent",
+        ]
 
     preset_subdir = "fluid"
 
@@ -457,7 +442,7 @@ class AddPresetTrackingCamera(AddPresetBase, Operator):
         name="Include Focal Length",
         description="Include focal length into the preset",
         options={'SKIP_SAVE'},
-        default=True
+        default=True,
     )
 
     @property
@@ -556,8 +541,8 @@ class AddPresetKeyconfig(AddPresetBase, Operator):
     preset_menu = "USERPREF_MT_keyconfigs"
     preset_subdir = "keyconfig"
 
-    def add(self, context, filepath):
-        bpy.ops.wm.keyconfig_export(filepath=filepath)
+    def add(self, _context, filepath):
+        bpy.ops.preferences.keyconfig_export(filepath=filepath)
         bpy.utils.keyconfig_set(filepath)
 
     def pre_cb(self, context):
@@ -667,6 +652,7 @@ class AddPresetGpencilBrush(AddPresetBase, Operator):
         "settings.uv_random",
         "settings.pen_jitter",
         "settings.use_jitter_pressure",
+        "settings.trim",
     ]
 
     preset_subdir = "gpencil_brush"
@@ -690,6 +676,9 @@ class AddPresetGpencilMaterial(AddPresetBase, Operator):
         "gpcolor.stroke_image",
         "gpcolor.pixel_size",
         "gpcolor.use_stroke_pattern",
+        "gpcolor.use_stroke_texture_mix",
+        "gpcolor.mix_stroke_factor",
+        "gpcolor.alignment_mode",
         "gpcolor.fill_style",
         "gpcolor.fill_color",
         "gpcolor.fill_image",
@@ -708,7 +697,7 @@ class AddPresetGpencilMaterial(AddPresetBase, Operator):
         "gpcolor.texture_angle",
         "gpcolor.texture_opacity",
         "gpcolor.texture_clamp",
-        "gpcolor.texture_mix",
+        "gpcolor.use_fill_texture_mix",
         "gpcolor.mix_factor",
         "gpcolor.show_stroke",
         "gpcolor.show_fill",

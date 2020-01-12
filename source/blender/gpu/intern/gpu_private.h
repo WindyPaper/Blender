@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -14,19 +12,18 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file gpu_private.h
- *  \ingroup gpu
+/** \file
+ * \ingroup gpu
  */
 
 #ifndef __GPU_PRIVATE_H__
 #define __GPU_PRIVATE_H__
 
-struct GPUContext;
-struct GPUFrameBuffer;
+/* call this before running any of the functions below */
+void gpu_platform_init(void);
+void gpu_platform_exit(void);
 
 /* call this before running any of the functions below */
 void gpu_extensions_init(void);
@@ -40,4 +37,8 @@ void gpu_debug_exit(void);
 void gpu_framebuffer_module_init(void);
 void gpu_framebuffer_module_exit(void);
 
-#endif  /* __GPU_PRIVATE_H__ */
+/* gpu_pbvh.c */
+void gpu_pbvh_init(void);
+void gpu_pbvh_exit(void);
+
+#endif /* __GPU_PRIVATE_H__ */

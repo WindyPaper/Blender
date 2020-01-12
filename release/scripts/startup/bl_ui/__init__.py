@@ -54,10 +54,9 @@ _modules = [
     "properties_physics_common",
     "properties_physics_dynamicpaint",
     "properties_physics_field",
-    "properties_physics_fluid",
     "properties_physics_rigidbody",
     "properties_physics_rigidbody_constraint",
-    "properties_physics_smoke",
+    "properties_physics_fluid",
     "properties_physics_softbody",
     "properties_render",
     "properties_output",
@@ -120,14 +119,12 @@ def register():
     )
     from bpy.types import WindowManager
 
-    def addon_filter_items(self, context):
+    def addon_filter_items(_self, _context):
         import addon_utils
 
         items = [
             ('All', "All", "All Add-ons"),
             ('User', "User", "All Add-ons Installed by User"),
-            ('Enabled', "Enabled", "All Enabled Add-ons"),
-            ('Disabled', "Disabled", "All Disabled Add-ons"),
         ]
 
         items_unique = set()
@@ -201,7 +198,7 @@ class UI_UL_list(bpy.types.UIList):
         for i, item in enumerate(items):
             name = getattr(item, propname, None)
             # This is similar to a logical xor
-            if bool(name and fnmatch.fnmatchcase(name, pattern)) is not bool(reverse):
+            if bool(name and fnmatch.fnmatch(name, pattern)) is not bool(reverse):
                 flags[i] |= bitflag
         return flags
 

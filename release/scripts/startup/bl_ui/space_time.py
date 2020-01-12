@@ -48,26 +48,27 @@ class TIME_HT_editor_buttons(Header):
             #   hide the play-reversed button
             #   since JACK transport doesn't support reversed playback
             if scene.sync_mode == 'AUDIO_SYNC' and context.preferences.system.audio_device == 'JACK':
-                sub = row.row(align=True)
-                sub.scale_x = 1.4
-                sub.operator("screen.animation_play", text="", icon='PLAY')
+                row.scale_x = 2
+                row.operator("screen.animation_play", text="", icon='PLAY')
+                row.scale_x = 1
             else:
                 row.operator("screen.animation_play", text="", icon='PLAY_REVERSE').reverse = True
                 row.operator("screen.animation_play", text="", icon='PLAY')
         else:
-            sub = row.row(align=True)
-            sub.scale_x = 1.4
-            sub.operator("screen.animation_play", text="", icon='PAUSE')
+            row.scale_x = 2
+            row.operator("screen.animation_play", text="", icon='PAUSE')
+            row.scale_x = 1
         row.operator("screen.keyframe_jump", text="", icon='NEXT_KEYFRAME').next = True
         row.operator("screen.frame_jump", text="", icon='FF').end = True
 
         layout.separator_spacer()
 
         row = layout.row()
-        row.scale_x = 0.95
         if scene.show_subframe:
+            row.scale_x = 1.15
             row.prop(scene, "frame_float", text="")
         else:
+            row.scale_x = 0.95
             row.prop(scene, "frame_current", text="")
 
         row = layout.row(align=True)
@@ -89,6 +90,7 @@ class TIME_MT_editor_menus(Menu):
     def draw(self, context):
         layout = self.layout
         horizontal = (layout.direction == 'VERTICAL')
+        st = context.space_data
         if horizontal:
             row = layout.row()
             sub = row.row(align=True)
@@ -108,7 +110,8 @@ class TIME_MT_editor_menus(Menu):
             sub = row.row(align=True)
 
         sub.menu("TIME_MT_view")
-        sub.menu("TIME_MT_marker")
+        if st.show_markers:
+            sub.menu("TIME_MT_marker")
 
 
 class TIME_MT_marker(Menu):
@@ -117,7 +120,7 @@ class TIME_MT_marker(Menu):
     def draw(self, context):
         layout = self.layout
 
-        marker_menu_generic(layout)
+        marker_menu_generic(layout, context)
 
 
 class TIME_MT_view(Menu):
@@ -134,7 +137,10 @@ class TIME_MT_view(Menu):
 
         layout.separator()
 
-        layout.prop(st, "show_frame_indicator")
+        layout.prop(st, "show_markers")
+
+        layout.separator()
+
         layout.prop(scene, "show_keys_from_selected_only")
 
         layout.separator()
@@ -174,8 +180,7 @@ class TIME_MT_cache(Menu):
         col.prop(st, "cache_rigidbody")
 
 
-def marker_menu_generic(layout):
-    from bpy import context
+def marker_menu_generic(layout, context):
 
     # layout.operator_context = 'EXEC_REGION_WIN'
 

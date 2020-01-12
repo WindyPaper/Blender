@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -17,41 +15,68 @@
  *
  * The Original Code is Copyright (C) 2006 Blender Foundation.
  * All rights reserved.
- *
- * The Original Code is: all of this file.
- *
- * Contributor(s): none yet.
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/nodes/composite/nodes/node_composite_math.c
- *  \ingroup cmpnodes
+/** \file
+ * \ingroup cmpnodes
  */
-
 
 #include "node_composite_util.h"
 
 /* **************** SCALAR MATH ******************** */
 static bNodeSocketTemplate cmp_node_math_in[] = {
-	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
-	{ SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
-	{ -1, 0, "" }
-};
+    {SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+    {SOCK_FLOAT, 1, N_("Value"), 0.5f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+    {SOCK_FLOAT, 1, N_("Value"), 0.0f, 0.5f, 0.5f, 1.0f, -10000.0f, 10000.0f, PROP_NONE},
+    {-1, 0, ""}};
 
-static bNodeSocketTemplate cmp_node_math_out[] = {
-	{ SOCK_FLOAT, 0, N_("Value")},
-	{ -1, 0, "" }
-};
+static bNodeSocketTemplate cmp_node_math_out[] = {{SOCK_FLOAT, 0, N_("Value")}, {-1, 0, ""}};
 
+static void node_shader_update_math(bNodeTree *UNUSED(ntree), bNode *node)
+{
+  bNodeSocket *sock = BLI_findlink(&node->inputs, 1);
+  nodeSetSocketAvailability(sock,
+                            !ELEM(node->custom1,
+                                  NODE_MATH_SQRT,
+                                  NODE_MATH_SIGN,
+                                  NODE_MATH_CEIL,
+                                  NODE_MATH_SINE,
+                                  NODE_MATH_ROUND,
+                                  NODE_MATH_FLOOR,
+                                  NODE_MATH_COSINE,
+                                  NODE_MATH_ARCSINE,
+                                  NODE_MATH_TANGENT,
+                                  NODE_MATH_ABSOLUTE,
+                                  NODE_MATH_RADIANS,
+                                  NODE_MATH_DEGREES,
+                                  NODE_MATH_FRACTION,
+                                  NODE_MATH_ARCCOSINE,
+                                  NODE_MATH_ARCTANGENT) &&
+                                !ELEM(node->custom1,
+                                      NODE_MATH_INV_SQRT,
+                                      NODE_MATH_TRUNC,
+                                      NODE_MATH_EXPONENT,
+                                      NODE_MATH_COSH,
+                                      NODE_MATH_SINH,
+                                      NODE_MATH_TANH));
+  bNodeSocket *sock2 = BLI_findlink(&node->inputs, 2);
+  nodeSetSocketAvailability(sock2,
+                            ELEM(node->custom1,
+                                 NODE_MATH_COMPARE,
+                                 NODE_MATH_MULTIPLY_ADD,
+                                 NODE_MATH_WRAP,
+                                 NODE_MATH_SMOOTH_MIN,
+                                 NODE_MATH_SMOOTH_MAX));
+}
 
 void register_node_type_cmp_math(void)
 {
-	static bNodeType ntype;
+  static bNodeType ntype;
 
-	cmp_node_type_base(&ntype, CMP_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, 0);
-	node_type_socket_templates(&ntype, cmp_node_math_in, cmp_node_math_out);
-	node_type_label(&ntype, node_math_label);
+  cmp_node_type_base(&ntype, CMP_NODE_MATH, "Math", NODE_CLASS_CONVERTOR, 0);
+  node_type_socket_templates(&ntype, cmp_node_math_in, cmp_node_math_out);
+  node_type_label(&ntype, node_math_label);
+  node_type_update(&ntype, node_shader_update_math);
 
-	nodeRegisterType(&ntype);
+  nodeRegisterType(&ntype);
 }

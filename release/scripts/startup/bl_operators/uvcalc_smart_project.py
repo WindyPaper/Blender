@@ -55,10 +55,10 @@ def pointInTri2D(v, v1, v2, v3):
         x= key[i]
         y= key[i+1]
 
-        if xmax<x:	xmax= x
-        if ymax<y:	ymax= y
-        if xmin>x:	xmin= x
-        if ymin>y:	ymin= y
+        if xmax<x: xmax= x
+        if ymax<y: ymax= y
+        if xmin>x: xmin= x
+        if ymin>y: ymin= y
 
     x= v.x
     y= v.y
@@ -169,7 +169,7 @@ def island2Edge(island):
 
     # Its okay to leave the length in there.
     # for e in length_sorted_edges:
-    #	e.pop(2)
+    #     e.pop(2)
 
     # return edges and unique points
     return length_sorted_edges, [v.to_3d() for v in unique_points.values()]
@@ -283,7 +283,16 @@ def mergeUvIslands(islandList):
         # UV Edge list used for intersections as well as unique points.
         edges, uniqueEdgePoints = island2Edge(islandList[islandIdx])
 
-        decoratedIslandList.append([islandList[islandIdx], totFaceArea, efficiency, islandBoundsArea, w, h, edges, uniqueEdgePoints])
+        decoratedIslandList.append([
+            islandList[islandIdx],
+            totFaceArea,
+            efficiency,
+            islandBoundsArea,
+            w,
+            h,
+            edges,
+            uniqueEdgePoints,
+        ])
 
     # Sort by island bounding box area, smallest face area first.
     # no.. chance that to most simple edge loop first.
@@ -389,7 +398,8 @@ def mergeUvIslands(islandList):
 
                             # testcount+=1
                             # print 'Testing intersect'
-                            Intersect = islandIntersectUvIsland(sourceIsland, targetIsland, Vector((boxLeft, boxBottom)))
+                            Intersect = islandIntersectUvIsland(
+                                sourceIsland, targetIsland, Vector((boxLeft, boxBottom)))
                             # print 'Done', Intersect
                             if Intersect == 1:  # Line intersect, don't bother with this any more
                                 pass
@@ -410,7 +420,7 @@ def mergeUvIslands(islandList):
                             elif Intersect == 0:  # No intersection?? Place it.
                                 # Progress
                                 removedCount += 1
-# XXX								Window.DrawProgressBar(0.0, 'Merged: %i islands, Ctrl to finish early.' % removedCount)
+# XXX  Window.DrawProgressBar(0.0, 'Merged: %i islands, Ctrl to finish early.' % removedCount)
 
                                 # Move faces into new island and offset
                                 targetIsland[0].extend(sourceIsland[0])
@@ -485,7 +495,7 @@ def getUvIslands(faceGroups, me):
 
     islandList = []
 
-# XXX	Window.DrawProgressBar(0.0, 'Splitting %d projection groups into UV islands:' % len(faceGroups))
+# XXX  Window.DrawProgressBar(0.0, 'Splitting %d projection groups into UV islands:' % len(faceGroups))
     # print '\tSplitting %d projection groups into UV islands:' % len(faceGroups),
     # Find grouped faces
 
@@ -552,7 +562,7 @@ def getUvIslands(faceGroups, me):
                     break
             # if not ok will stop looping
 
-# XXX	Window.DrawProgressBar(0.1, 'Optimizing Rotation for %i UV Islands' % len(islandList))
+# XXX  Window.DrawProgressBar(0.1, 'Optimizing Rotation for %i UV Islands' % len(islandList))
 
     for island in islandList:
         optiRotateUvIsland(island)
@@ -562,7 +572,7 @@ def getUvIslands(faceGroups, me):
 
 def packIslands(islandList):
     if USER_FILL_HOLES:
-        # XXX		Window.DrawProgressBar(0.1, 'Merging Islands (Ctrl: skip merge)...')
+        # XXX  Window.DrawProgressBar(0.1, 'Merging Islands (Ctrl: skip merge)...')
         mergeUvIslands(islandList)  # Modify in place
 
     # Now we have UV islands, we need to pack them.
@@ -583,10 +593,10 @@ def packIslands(islandList):
         w, h = maxx - minx, maxy - miny
 
         if USER_ISLAND_MARGIN:
-            minx -= USER_ISLAND_MARGIN  # *w
-            miny -= USER_ISLAND_MARGIN  # *h
-            maxx += USER_ISLAND_MARGIN  # *w
-            maxy += USER_ISLAND_MARGIN  # *h
+            minx -= USER_ISLAND_MARGIN * w / 2
+            miny -= USER_ISLAND_MARGIN * h / 2
+            maxx += USER_ISLAND_MARGIN * w / 2
+            maxy += USER_ISLAND_MARGIN * h / 2
 
             # recalc width and height
             w, h = maxx - minx, maxy - miny
@@ -611,18 +621,18 @@ def packIslands(islandList):
     # with the islands.
 
     # print '\tPacking UV Islands...'
-# XXX	Window.DrawProgressBar(0.7, "Packing %i UV Islands..." % len(packBoxes) )
+# XXX  Window.DrawProgressBar(0.7, "Packing %i UV Islands..." % len(packBoxes) )
 
     # time1 = time.time()
     packWidth, packHeight = geometry.box_pack_2d(packBoxes)
 
     # print 'Box Packing Time:', time.time() - time1
 
-    # if len(pa	ckedLs) != len(islandList):
+    # if len(packedLs) != len(islandList):
     #    raise ValueError("Packed boxes differs from original length")
 
     # print '\tWriting Packed Data to faces'
-# XXX	Window.DrawProgressBar(0.8, "Writing Packed Data to faces")
+# XXX  Window.DrawProgressBar(0.8, "Writing Packed Data to faces")
 
     # Sort by ID, so there in sync again
     islandIdx = len(islandList)
@@ -728,20 +738,20 @@ def main(context,
     USER_FILL_HOLES_QUALITY = 50  # Only for hole filling.
     USER_VIEW_INIT = 0  # Only for hole filling.
 
-    obList = [ob for ob in context.selected_editable_objects if ob and ob.type == 'MESH']
-    is_editmode = (context.active_object.mode == 'EDIT')
+    is_editmode = (context.mode == 'EDIT_MESH')
+    if is_editmode:
+        obList = context.objects_in_mode_unique_data
+    else:
+        obList = [
+            ob for ob in context.selected_editable_objects
+            if ob.type == 'MESH' and ob.data.library is None
+        ]
 
     if not is_editmode:
         USER_ONLY_SELECTED_FACES = False
 
     if not obList:
         raise Exception("error, no selected mesh objects")
-
-    # Reuse variable
-    if len(obList) == 1:
-        ob = "Unwrap %i Selected Mesh"
-    else:
-        ob = "Unwrap %i Selected Meshes"
 
     # Convert from being button types
     USER_PROJECTION_LIMIT_CONVERTED = cos(USER_PROJECTION_LIMIT * DEG_TO_RAD)
@@ -803,7 +813,8 @@ def main(context,
         if not meshFaces:
             continue
 
-        # Smallest first is slightly more efficient, but if the user cancels early then its better we work on the larger data.
+        # Smallest first is slightly more efficient,
+        # but if the user cancels early then its better we work on the larger data.
 
         # Generate Projection Vecs
         # 0d is   1.0
@@ -812,7 +823,9 @@ def main(context,
         # Initialize projectVecs
         if USER_VIEW_INIT:
             # Generate Projection
-            projectVecs = [Vector(Window.GetViewVector()) @ ob.matrix_world.inverted().to_3x3()]  # We add to this along the way
+
+            # We add to this along the way
+            projectVecs = [Vector(Window.GetViewVector()) @ ob.matrix_world.inverted().to_3x3()]
         else:
             projectVecs = []
 
@@ -1008,7 +1021,7 @@ class SmartProject(Operator):
     use_aspect: BoolProperty(
         name="Correct Aspect",
         description="Map UVs taking image aspect ratio into account",
-        default=True
+        default=True,
     )
     stretch_to_bounds: BoolProperty(
         name="Stretch to UV Bounds",
@@ -1026,11 +1039,11 @@ class SmartProject(Operator):
              self.angle_limit,
              self.user_area_weight,
              self.use_aspect,
-             self.stretch_to_bounds
-             )
+             self.stretch_to_bounds,
+        )
         return {'FINISHED'}
 
-    def invoke(self, context, event):
+    def invoke(self, context, _event):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 

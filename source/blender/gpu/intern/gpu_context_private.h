@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -17,14 +15,10 @@
  *
  * The Original Code is Copyright (C) 2016 by Mike Erwin.
  * All rights reserved.
- *
- * Contributor(s): Blender Foundation
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/gpu/intern/gpu_context_private.h
- *  \ingroup gpu
+/** \file
+ * \ingroup gpu
  *
  * This interface allow GPU to manage GL objects for multiple context and threads.
  */
@@ -41,6 +35,7 @@ extern "C" {
 struct GPUFrameBuffer;
 
 GLuint GPU_vao_default(void);
+GLuint GPU_framebuffer_default(void);
 
 /* These require a gl ctx bound. */
 GLuint GPU_buf_alloc(void);
@@ -63,6 +58,8 @@ void gpu_context_remove_framebuffer(GPUContext *ctx, struct GPUFrameBuffer *fb);
 
 void gpu_context_active_framebuffer_set(GPUContext *ctx, struct GPUFrameBuffer *fb);
 struct GPUFrameBuffer *gpu_context_active_framebuffer_get(GPUContext *ctx);
+
+struct GPUMatrixState *gpu_context_active_matrix_state_get(void);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -17,38 +15,32 @@
  *
  * The Original Code is Copyright (C) 2007 Blender Foundation.
  * All rights reserved.
- *
- *
- * Contributor(s): Blender Foundation
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/windowmanager/wm.h
- *  \ingroup wm
+/** \file
+ * \ingroup wm
  */
 
 #ifndef __WM_H__
 #define __WM_H__
 
 struct ARegion;
-struct wmWindow;
 struct ReportList;
+struct wmWindow;
 
 #include "gizmo/wm_gizmo_wmapi.h"
 
 typedef struct wmPaintCursor {
-	struct wmPaintCursor *next, *prev;
+  struct wmPaintCursor *next, *prev;
 
-	void *customdata;
+  void *customdata;
 
-	bool (*poll)(struct bContext *C);
-	void (*draw)(bContext *C, int, int, void *customdata);
+  bool (*poll)(struct bContext *C);
+  void (*draw)(bContext *C, int, int, void *customdata);
 
-	short space_type;
-	short region_type;
+  short space_type;
+  short region_type;
 } wmPaintCursor;
-
 
 void wm_exit_schedule_delayed(const bContext *C);
 
@@ -58,8 +50,8 @@ extern void wm_close_and_free_all(bContext *C, ListBase *);
 extern void wm_add_default(struct Main *bmain, bContext *C);
 extern void wm_clear_default_size(bContext *C);
 
-			/* register to windowmanager for redo or macro */
-void		wm_operator_register(bContext *C, wmOperator *op);
+/* register to windowmanager for redo or macro */
+void wm_operator_register(bContext *C, wmOperator *op);
 
 /* wm_operator.c, for init/exit */
 void wm_operatortype_free(void);
@@ -69,7 +61,7 @@ void wm_operatortypes_register(void);
 
 /* wm_gesture.c */
 void wm_gesture_draw(struct wmWindow *win);
-int wm_gesture_evaluate(wmGesture *gesture);
+int wm_gesture_evaluate(wmGesture *gesture, const struct wmEvent *event);
 void wm_gesture_tag_redraw(bContext *C);
 
 /* wm_gesture_ops.c */
@@ -85,6 +77,9 @@ void wm_autosave_timer_ended(wmWindowManager *wm);
 void wm_autosave_delete(void);
 void wm_autosave_read(bContext *C, struct ReportList *reports);
 void wm_autosave_location(char *filepath);
+
+/* wm_splash_screen.c */
+void WM_OT_splash(wmOperatorType *ot);
 
 /* wm_stereo.c */
 void wm_stereo3d_draw_interlace(wmWindow *win, struct ARegion *ar);

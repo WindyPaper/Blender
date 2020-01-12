@@ -21,8 +21,6 @@
 
 # <pep8 compliant>
 
-# Contributor(s): Keith "Wahooney" Boshoff, Campbell Barton, Sybren A. Stüvel
-
 
 def get_vcolor_layer_data(me):
     for lay in me.vertex_colors:
@@ -127,7 +125,6 @@ def applyVertexDirt(me, blur_iterations, blur_strength, clamp_dirt, clamp_clean,
     return {'FINISHED'}
 
 
-import bpy
 from bpy.types import Operator
 from bpy.props import FloatProperty, IntProperty, BoolProperty
 from math import pi
@@ -179,7 +176,14 @@ class VertexPaintDirt(Operator):
         obj = context.object
         mesh = obj.data
 
-        ret = applyVertexDirt(mesh, self.blur_iterations, self.blur_strength, self.dirt_angle, self.clean_angle, self.dirt_only)
+        ret = applyVertexDirt(
+            mesh,
+            self.blur_iterations,
+            self.blur_strength,
+            self.dirt_angle,
+            self.clean_angle,
+            self.dirt_only,
+        )
 
         return ret
 

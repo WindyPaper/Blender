@@ -116,7 +116,7 @@ def mesh_linked_triangles(mesh):
     while ok:
         ok = False
 
-        for i, t in enumerate(mesh.loop_triangles):
+        for t in mesh.loop_triangles:
             mapped_index = tri_mapping[t.index]
             mapped_group = tri_groups[mapped_index]
 
@@ -241,9 +241,9 @@ def edge_loops_from_edges(mesh, edges=None):
 
 def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
     """
-    Takes a polyline of indices (fgon) and returns a list of face
+    Takes a polyline of indices (ngon) and returns a list of face
     index lists. Designed to be used for importers that need indices for an
-    fgon to create from existing verts.
+    ngon to create from existing verts.
 
     :arg from_data: either a mesh, or a list/tuple of vectors.
     :type from_data: list or :class:`bpy.types.Mesh`
@@ -265,7 +265,7 @@ def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
         return []
 
     def mlen(co):
-        # manhatten length of a vector, faster then length
+        # Manhatten length of a vector, faster then length.
         return abs(co[0]) + abs(co[1]) + abs(co[2])
 
     def vert_treplet(v, i):
@@ -278,9 +278,8 @@ def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
             return v1[1], v2[1]
 
     if not fix_loops:
-        """
-        Normal single concave loop filling
-        """
+        # Normal single concave loop filling.
+
         if type(from_data) in {tuple, list}:
             verts = [Vector(from_data[i]) for ii, i in enumerate(indices)]
         else:
@@ -294,17 +293,19 @@ def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
         fill = tessellate_polygon([verts])
 
     else:
-        """
-        Separate this loop into multiple loops be finding edges that are
-        used twice. This is used by lightwave LWO files a lot
-        """
+        # Separate this loop into multiple loops be finding edges that are
+        # used twice. This is used by Light-Wave LWO files a lot.
 
         if type(from_data) in {tuple, list}:
-            verts = [vert_treplet(Vector(from_data[i]), ii)
-                     for ii, i in enumerate(indices)]
+            verts = [
+                vert_treplet(Vector(from_data[i]), ii)
+                for ii, i in enumerate(indices)
+            ]
         else:
-            verts = [vert_treplet(from_data.vertices[i].co, ii)
-                     for ii, i in enumerate(indices)]
+            verts = [
+                vert_treplet(from_data.vertices[i].co, ii)
+                for ii, i in enumerate(indices)
+            ]
 
         edges = [(i, i - 1) for i in range(len(verts))]
         if edges:
@@ -354,7 +355,7 @@ def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
             else:
                 return False
 
-            # If were stuill here s1 and s2 are 2 segments in the same polyline
+            # If were still here s1 and s2 are 2 segments in the same poly-line.
             s1.pop()  # remove the last vert from s1
             s1.extend(s2)  # add segment 2 to segment 1
 
@@ -402,14 +403,14 @@ def ngon_tessellate(from_data, indices, fix_loops=True, debug_print=True):
         # draw_loops(loop_list)
         #raise Exception("done loop")
         # map to original indices
-        fill = [[vert_map[i] for i in reversed(f)] for f in fill]
+        fill = [[vert_map[i] for i in f] for f in fill]
 
     if not fill:
         if debug_print:
             print('Warning Cannot scanfill, fallback on a triangle fan.')
         fill = [[0, i - 1, i] for i in range(2, len(indices))]
     else:
-        # Use real scanfill.
+        # Use real scan-fill.
         # See if its flipped the wrong way.
         flip = None
         for fi in fill:
@@ -443,7 +444,6 @@ def triangle_random_points(num_points, loop_triangles):
     """
 
     from random import random
-    from mathutils.geometry import area_tri
 
     # For each triangle, generate the required number of random points
     sampled_points = [None] * (num_points * len(loop_triangles))
@@ -454,19 +454,6 @@ def triangle_random_points(num_points, loop_triangles):
         tv = (verts[ltv[0]].co, verts[ltv[1]].co, verts[ltv[2]].co)
 
         for k in range(num_points):
-            # If this is a quad, we need to weight its 2 tris by their area
-            if len(tv) != 1:
-                area1 = area_tri(*tv[0])
-                area2 = area_tri(*tv[1])
-                area_tot = area1 + area2
-
-                area1 = area1 / area_tot
-                area2 = area2 / area_tot
-
-                vecs = tv[0 if (random() < area1) else 1]
-            else:
-                vecs = tv[0]
-
             u1 = random()
             u2 = random()
             u_tot = u1 + u2
@@ -475,10 +462,10 @@ def triangle_random_points(num_points, loop_triangles):
                 u1 = 1.0 - u1
                 u2 = 1.0 - u2
 
-            side1 = vecs[1] - vecs[0]
-            side2 = vecs[2] - vecs[0]
+            side1 = tv[1] - tv[0]
+            side2 = tv[2] - tv[0]
 
-            p = vecs[0] + u1 * side1 + u2 * side2
+            p = tv[0] + u1 * side1 + u2 * side2
 
             sampled_points[num_points * i + k] = p
 

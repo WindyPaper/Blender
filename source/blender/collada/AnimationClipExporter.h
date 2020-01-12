@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -14,11 +12,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * Contributor(s): Chingiz Dyussenov, Arystanbek Dyussenov, Jan Diederich, Tod Liverseed.
- *
- * ***** END GPL LICENSE BLOCK *****
  */
+
+#ifndef __ANIMATIONCLIPEXPORTER_H__
+#define __ANIMATIONCLIPEXPORTER_H__
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,25 +23,29 @@
 
 #include "COLLADASWLibraryAnimationClips.h"
 
+class AnimationClipExporter : COLLADASW::LibraryAnimationClips {
+ private:
+  Depsgraph *depsgraph;
+  Scene *scene;
+  COLLADASW::StreamWriter *sw;
+  BCExportSettings &export_settings;
+  std::vector<std::vector<std::string>> anim_meta;
 
-class AnimationClipExporter:COLLADASW::LibraryAnimationClips {
-private:
-	Depsgraph *depsgraph;
-	Scene *scene;
-	COLLADASW::StreamWriter *sw;
-	const ExportSettings *export_settings;
-	std::vector<std::vector<std::string>> anim_meta;
+ public:
+  AnimationClipExporter(Depsgraph *depsgraph,
+                        COLLADASW::StreamWriter *sw,
+                        BCExportSettings &export_settings,
+                        std::vector<std::vector<std::string>> anim_meta)
+      : COLLADASW::LibraryAnimationClips(sw),
+        depsgraph(depsgraph),
+        scene(nullptr),
+        sw(sw),
+        export_settings(export_settings),
+        anim_meta(anim_meta)
+  {
+  }
 
-public:
-
-	AnimationClipExporter(Depsgraph *depsgraph , COLLADASW::StreamWriter *sw, const ExportSettings *export_settings, std::vector<std::vector<std::string>> anim_meta) :
-		COLLADASW::LibraryAnimationClips(sw),
-		depsgraph(depsgraph),
-		scene(nullptr),
-		sw(sw),
-		export_settings(export_settings),
-		anim_meta(anim_meta)
-	{}
-
-	void exportAnimationClips(Scene *sce);
+  void exportAnimationClips(Scene *sce);
 };
+
+#endif /*  __ANIMATIONCLIPEXPORTER_H__ */

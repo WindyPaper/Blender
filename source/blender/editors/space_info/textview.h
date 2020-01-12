@@ -1,6 +1,4 @@
 /*
- * ***** BEGIN GPL LICENSE BLOCK *****
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -14,52 +12,61 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
- *
- * Contributor(s): Campbell Barton
- *
- * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/editors/space_info/textview.h
- *  \ingroup spinfo
+/** \file
+ * \ingroup spinfo
  */
 
 #ifndef __TEXTVIEW_H__
 #define __TEXTVIEW_H__
 
 typedef struct TextViewContext {
-	int lheight;
-	int sel_start, sel_end;
+  /** Font size scaled by the interface size. */
+  int lheight;
+  /** Text selection, when a selection range is in use. */
+  int sel_start, sel_end;
 
-	/* view settings */
-	int cwidth; /* shouldnt be needed! */
-	int console_width; /* shouldnt be needed! */
+  /* view settings */
+  int cwidth;  /* shouldnt be needed! */
+  int columns; /* shouldnt be needed! */
 
-	int winx;
-	int ymin, ymax;
+  /** Area to draw: (0, 0, winx, winy) with a margin applied and scroll-bar subtracted. */
+  rcti draw_rect;
 
-	/* callbacks */
-	int (*begin)(struct TextViewContext *tvc);
-	void (*end)(struct TextViewContext *tvc);
-	void *arg1;
-	void *arg2;
+  /** Scroll offset in pixels. */
+  int scroll_ymin, scroll_ymax;
 
-	/* iterator */
-	int (*step)(struct TextViewContext *tvc);
-	int (*line_get)(struct TextViewContext *tvc, const char **, int *);
-	int (*line_color)(struct TextViewContext *tvc, unsigned char fg[3], unsigned char bg[3]);
-	void (*const_colors)(struct TextViewContext *tvc, unsigned char bg_sel[4]);  /* constant theme colors */
-	void *iter;
-	int iter_index;
-	int iter_char;		/* char intex, used for multi-line report display */
-	int iter_char_next;	/* same as above, next \n */
-	int iter_tmp;		/* internal iterator use */
+  /* callbacks */
+  int (*begin)(struct TextViewContext *tvc);
+  void (*end)(struct TextViewContext *tvc);
+  void *arg1;
+  void *arg2;
+
+  /* iterator */
+  int (*step)(struct TextViewContext *tvc);
+  int (*line_get)(struct TextViewContext *tvc, const char **, int *);
+  int (*line_color)(struct TextViewContext *tvc, unsigned char fg[3], unsigned char bg[3]);
+  /* constant theme colors */
+  void (*const_colors)(struct TextViewContext *tvc, unsigned char bg_sel[4]);
+  void *iter;
+  int iter_index;
+  /** Char index, used for multi-line report display. */
+  int iter_char;
+  /** Same as 'iter_char', next new-line. */
+  int iter_char_next;
+  /** Internal iterator use. */
+  int iter_tmp;
 
 } TextViewContext;
 
-int textview_draw(struct TextViewContext *tvc, const int draw, int mval[2], void **mouse_pick, int *pos_pick);
+int textview_draw(struct TextViewContext *tvc,
+                  const bool do_draw,
+                  const int mval_init[2],
+                  void **r_mval_pick_item,
+                  int *r_mval_pick_offset);
 
-#define TVC_LINE_FG	(1<<0)
-#define TVC_LINE_BG	(1<<1)
+#define TVC_LINE_FG (1 << 0)
+#define TVC_LINE_BG (1 << 1)
 
-#endif  /* __TEXTVIEW_H__ */
+#endif /* __TEXTVIEW_H__ */

@@ -1,13 +1,12 @@
 
 uniform mat4 ViewProjectionMatrix;
-uniform float alpha;
 
-/* ---- Instantiated Attribs ---- */
+/* ---- Instantiated Attrs ---- */
 in vec3 pos;
 
-/* ---- Per instance Attribs ---- */
+/* ---- Per instance Attrs ---- */
 in mat4 InstanceModelMatrix;
-in vec3 color;
+in vec4 color;
 #ifdef UNIFORM_SCALE
 in float size;
 #else
@@ -18,6 +17,12 @@ flat out vec4 finalColor;
 
 void main()
 {
-	gl_Position = ViewProjectionMatrix * InstanceModelMatrix * vec4(pos * size, 1.0);
-	finalColor = vec4(color, alpha);
+  finalColor = color;
+
+  vec4 wPos = InstanceModelMatrix * vec4(pos * size, 1.0);
+  gl_Position = ViewProjectionMatrix * wPos;
+
+#ifdef USE_WORLD_CLIP_PLANES
+  world_clip_planes_calc_clip_distance(wPos.xyz);
+#endif
 }

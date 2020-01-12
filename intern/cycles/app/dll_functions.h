@@ -31,11 +31,35 @@ extern "C"
 		int work_type; //RENDER / BAKDER
 	};
 
+	struct CyclesMeshData
+	{
+		float* vertex_array;
+		float* uvs_array;
+		float* lightmapuvs_array;
+		float* normal_array;
+		int vertex_num;
+		int* index_array;
+		int* mat_index;
+		int triangle_num;
+		int mtl_num;
+	};
+
+	struct CyclesMtlData
+	{
+		char mat_name[255];
+		char diffuse_tex_name[255];
+		char mtl_tex_name[255];
+		char normal_tex_name[255];
+
+		bool is_transparent;
+		float tiling_x, tiling_y;
+		float offset_x, offset_y;
+		float* diffuse_color; //float3
+	};
+
 	DLL_EXPORT bool init_cycles(CyclesInitOptions init_op);
 
-	DLL_EXPORT int unity_add_mesh(float* vertex_array, float* uvs_array, float* lightmapuvs_array, float* normal_array, int vertex_num,
-		int* index_array, int* mat_index, int triangle_num,
-		const char** mat_name, const char** diffuse_tex, int mat_num);
+	DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls);
 
 	DLL_EXPORT int unity_add_light(const char* name, float intensity, float radius, float* color, float* dir, float* pos, int type);
 

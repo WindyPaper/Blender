@@ -72,8 +72,8 @@ void assign_session_specific(const int w, const int h, const int render_device, 
 	options.output_path = "./Assets/out_render_image.tga";
 	options.width = w;
 	options.height = h;
-	options.session_params.tile_size.x = 1024;
-	options.session_params.tile_size.y = 1025;
+	options.session_params.tile_size.x = 128;
+	options.session_params.tile_size.y = 128;
 	bool debug = true;
 
 	if (debug) {
@@ -133,10 +133,89 @@ static void unity_session_init()
 //#endif
 }
 
-static void internal_custom_scene(float3* vertex_array, float2* uvs_array, float2* lightmapuvs_array, float3* normal_array, int vertex_num,
-	int* index_array, int* mat_index, int triangle_num,
-	std::string* mat_name, std::string* diffuse_tex, int mat_num)
+int create_unity2cycles_shader(Scene* scene, const CyclesMtlData *mtl_data)
 {
+	ShaderGraph* graph = new ShaderGraph();
+
+
+	TextureCoordinateNode* tex_uv_coord_node = new TextureCoordinateNode();
+	graph->add(tex_uv_coord_node);
+	MappingNode* tex_scale_mapping_node = new MappingNode();
+	tex_scale_mapping_node->tex_mapping.scale.x = mtl_data->tiling_x;
+	tex_scale_mapping_node->tex_mapping.scale.y = mtl_data->tiling_y;
+	tex_scale_mapping_node->tex_mapping.type = tex_scale_mapping_node->tex_mapping.VECTOR;
+	graph->add(tex_scale_mapping_node);
+	
+	graph->connect(tex_uv_coord_node->output("UV"), tex_scale_mapping_node->input("Vector"));
+
+	ImageTextureNode* diff_img_node = new ImageTextureNode();
+	diff_img_node->filename = mtl_data->diffuse_tex_name;
+	graph->add(diff_img_node);
+	graph->connect(tex_scale_mapping_node->output("Vector"), diff_img_node->input("Vector"));
+
+	ImageTextureNode* mtl_img_node = new ImageTextureNode();
+	mtl_img_node->filename = mtl_data->mtl_tex_name;
+	mtl_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	graph->add(mtl_img_node);
+	graph->connect(tex_scale_mapping_node->output("Vector"), mtl_img_node->input("Vector"));
+
+	ImageTextureNode* normal_img_node = new ImageTextureNode();
+	normal_img_node->filename = mtl_data->normal_tex_name;
+	normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	graph->add(normal_img_node);
+	graph->connect(tex_scale_mapping_node->output("Vector"), normal_img_node->input("Vector"));
+
+	NormalMapNode* change_to_normalmap_node = new NormalMapNode();
+	change_to_normalmap_node->space = NODE_NORMAL_MAP_TANGENT;
+	graph->add(change_to_normalmap_node);
+	//change_to_normalmap_node->normal_osl = make_float3(1, 0, 0);
+	graph->connect(normal_img_node->output("Color"), change_to_normalmap_node->input("Color"));
+
+	//DiffuseBsdfNode* diffuse = new DiffuseBsdfNode(); Only for baking 
+	PrincipledBsdfNode* pbr = new PrincipledBsdfNode();
+	//diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+	graph->add(pbr);
+
+	graph->connect(diff_img_node->output("Color"), pbr->input("Base Color"));
+
+	//for alpha blend in 2.7version
+	MixNode* mix_node = new MixNode();
+	graph->add(mix_node);
+	//graph->connect(diff_img_node->output("Alpha"), mix_node->input("Fac"));
+	mix_node->fac = 0.0f;
+	TransparentBsdfNode* transparent_node = new TransparentBsdfNode();
+	//transparent_node->color = make_float3(1.0f, 1.0f, 1.0f);
+	graph->connect(pbr->output("BSDF"), mix_node->input("Color2"));
+	//graph->connect(transparent_node->output("BSDF"), mix_node->input("Color1"));
+	graph->connect(pbr->output("BSDF"), mix_node->input("Color1"));
+	//comment for baking	
+	//graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Normal"));
+
+	graph->connect(pbr->output("BSDF"), graph->output()->input("Surface"));
+	//graph->connect(mix_node->output("Color"), graph->output()->input("Surface"));
+
+	Shader* shader = new Shader();
+	shader->name = "pbr_default_surface";
+	shader->graph = graph;
+	scene->shaders.push_back(shader);
+	//scene->default_surface = shader;
+	shader->tag_update(scene);
+
+	return scene->shaders.size() - 1;
+}
+
+static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesMtlData *mtls)
+	//std::string* mat_name, std::string* diffuse_tex, int mat_num)
+{
+	const float3* vertex_array = (float3*)mesh_data.vertex_array;
+	const float2* uvs_array = (float2*)mesh_data.uvs_array;
+	const float2* lightmapuvs_array = (float2*)mesh_data.lightmapuvs_array;
+	const float3* normal_array = (float3*)mesh_data.normal_array;
+	const int vertex_num = mesh_data.vertex_num;
+	const int* index_array = mesh_data.index_array;
+	const int* mat_index = mesh_data.mat_index;
+	const int triangle_num = mesh_data.triangle_num;
+
 	Scene* scene = options.scene;
 	if (scene == NULL)
 	{
@@ -154,10 +233,11 @@ static void internal_custom_scene(float3* vertex_array, float2* uvs_array, float
 		fbx_add_default_shader(scene);
 	}
 
-	std::vector<int> cycles_shader_indexs(mat_num);
-	for (int i = 0; i < mat_num; ++i)
+	int mtl_num = mesh_data.mtl_num;
+	std::vector<int> cycles_shader_indexs(mtl_num);
+	for (int i = 0; i < mtl_num; ++i)
 	{
-		cycles_shader_indexs[i] = create_pbr_shader(scene, diffuse_tex[i], "", "");
+		cycles_shader_indexs[i] = create_unity2cycles_shader(scene, &mtls[i]);
 	}
 
 	bool smooth = true;
@@ -167,7 +247,7 @@ static void internal_custom_scene(float3* vertex_array, float2* uvs_array, float
 
 	p_cy_mesh->verts.resize(vertex_num);
 
-	for (int i = 0; i < mat_num; ++i)
+	for (int i = 0; i < mtl_num; ++i)
 	{
 		p_cy_mesh->used_shaders.push_back(scene->shaders[cycles_shader_indexs[i]]);
 	}
@@ -237,24 +317,20 @@ DLL_EXPORT bool init_cycles(CyclesInitOptions init_op)
 	return true;
 }
 
-DLL_EXPORT int unity_add_mesh(float* vertex_array, float* uvs_array, float* lightmapuvs_array, float* normal_array, int vertex_num,
-	int* index_array, int* mat_index, int triangle_num,
-	const char** mat_name, const char** diffuse_tex, int mat_num)
+DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData* mtls)
 {
-	std::string* mat_name_strings = new std::string[mat_num];
-	std::string* diffuse_tex_strings = new std::string[mat_num];
-	for (int i = 0; i < mat_num; ++i)
-	{
-		mat_name_strings[i] = mat_name[i];
-		diffuse_tex_strings[i] = diffuse_tex[i];
-	}
+	//std::string* mat_name_strings = new std::string[mat_num];
+	//std::string* diffuse_tex_strings = new std::string[mat_num];
+	//for (int i = 0; i < mat_num; ++i)
+	//{
+	//	mat_name_strings[i] = mat_name[i];
+	//	diffuse_tex_strings[i] = diffuse_tex[i];
+	//}
 
-	internal_custom_scene((float3*)vertex_array, (float2*)uvs_array, (float2*)lightmapuvs_array, (float3*)normal_array, vertex_num,
-		index_array, mat_index, triangle_num,
-		mat_name_strings, diffuse_tex_strings, mat_num);
+	internal_custom_scene(mesh_data, mtls);
 
-	delete[] mat_name_strings;
-	delete[] diffuse_tex_strings;
+	//delete[] mat_name_strings;
+	//delete[] diffuse_tex_strings;
 
 	return 0;
 }

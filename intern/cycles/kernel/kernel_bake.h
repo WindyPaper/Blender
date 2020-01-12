@@ -18,7 +18,7 @@ CCL_NAMESPACE_BEGIN
 
 #ifdef __BAKING__
 
-ccl_device_inline void compute_light_pass(KernelGlobals *kg,
+ccl_device_inline Ray compute_light_pass(KernelGlobals *kg,
                                           ShaderData *sd,
                                           PathRadiance *L,
                                           uint rng_hash,
@@ -30,6 +30,7 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 	PathRadiance L_sample;
 	PathState state;
 	Ray ray;
+	Ray first_reflect_ray;
 	float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
 
 	/* emission and indirect shader data memory used by various functions */
@@ -112,6 +113,7 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 			kernel_path_surface_connect_light(kg, sd, &emission_sd, throughput, &state, &L_sample);
 
 			if(kernel_path_surface_bounce(kg, sd, &throughput, &state, &L_sample.state, &ray)) {
+				first_reflect_ray = ray;
 #ifdef __LAMP_MIS__
 				state.ray_t = 0.0f;
 #endif
@@ -168,6 +170,8 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 
 	/* accumulate into master L */
 	path_radiance_accum_sample(L, &L_sample);
+
+	return first_reflect_ray;
 }
 
 /* this helps with AA but it's not the real solution as it does not AA the geometry
@@ -195,6 +199,8 @@ ccl_device_inline float3 kernel_bake_shader_bsdf(KernelGlobals *kg,
 			return shader_bsdf_glossy(kg, sd);
 		case SHADER_EVAL_TRANSMISSION:
 			return shader_bsdf_transmission(kg, sd);
+		case SHADER_EVAL_SH4:
+			return shader_bsdf_diffuse(kg, sd);
 #ifdef __SUBSURFACE__
 		case SHADER_EVAL_SUBSURFACE:
 			return shader_bsdf_subsurface(kg, sd);
@@ -202,6 +208,36 @@ ccl_device_inline float3 kernel_bake_shader_bsdf(KernelGlobals *kg,
 		default:
 			kernel_assert(!"Unknown bake type passed to BSDF evaluate");
 			return make_float3(0.0f, 0.0f, 0.0f);
+	}
+}
+
+ccl_device void project_on_SH4(float3 dir, float4 *out_sh4)
+{
+	// Band 0
+	out_sh4->x = 0.282095f;
+
+	// Band 1
+	out_sh4->y = -0.488603f * dir.y;
+	out_sh4->z = 0.488603f * dir.z;
+	out_sh4->w = -0.488603f * dir.x;
+}
+
+ccl_device void bake_evaluate_SH4(float3 color,
+								float3 sample_dir,
+								float4 *SH_out	
+								)
+{
+	float4 sh_coefficient;
+	project_on_SH4(sample_dir, &sh_coefficient);
+
+
+	for (int i = 0; i < 3; ++i)
+	{
+		float4* curr = SH_out + i;
+		curr->x = sh_coefficient.x * (*(&color.x + i));
+		curr->y = sh_coefficient.y * (*(&color.x + i));
+		curr->z = sh_coefficient.z * (*(&color.x + i));
+		curr->w = sh_coefficient.w * (*(&color.x + i));
 	}
 }
 
@@ -247,14 +283,16 @@ ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
 }
 
 ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input, ccl_global float4 *output,
-                                     ShaderEvalType type, int pass_filter, int i, int offset, int sample)
+                                     ShaderEvalType type, int pass_filter, int i, int offset, int sample, float2* uvs_array,
+									 uint2* uvs_array_offset_ele_size)
 {
 	ShaderData sd;
 	PathState state = {0};
 	uint4 in = input[i * 2];
-	uint4 diff = input[i * 2 + 1];
+	uint4 diff = input[i * 2 + 1];	
 
 	float3 out = make_float3(0.0f, 0.0f, 0.0f);
+	float4 sh_out[3];
 
 	int object = in.x;
 	int prim = in.y;
@@ -285,6 +323,20 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 
 	/* subpixel u/v offset */
 	if(sample > 0) {
+		if (uvs_array_offset_ele_size && uvs_array_offset_ele_size[i].y > 0)
+		{
+			uint uvs_array_offset = uvs_array_offset_ele_size[i].x;
+			uint uvs_array_ele_size = uvs_array_offset_ele_size[i].y;
+
+			int offset_index = 0;
+			if (sample > uvs_array_ele_size)
+			{
+				offset_index = (((sample+1) / uvs_array_ele_size) - (int)((sample+1) / uvs_array_ele_size)) * (uvs_array_ele_size - 1);
+			}
+			
+			u = uvs_array[uvs_array_offset + offset_index].x;
+			v = uvs_array[uvs_array_offset + offset_index].y;			
+		}
 		u = bake_clamp_mirror_repeat(u + dudx*(filter_x - 0.5f) + dudy*(filter_y - 0.5f), 1.0f);
 		v = bake_clamp_mirror_repeat(v + dvdx*(filter_x - 0.5f) + dvdy*(filter_y - 0.5f), 1.0f - u);
 	}
@@ -322,9 +374,11 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	state.num_samples = num_samples;
 	state.min_ray_pdf = FLT_MAX;
 
+	Ray fst_reflect_ray;
+
 	/* light passes if we need more than color */
 	if(pass_filter & ~BAKE_FILTER_COLOR)
-		compute_light_pass(kg, &sd, &L, rng_hash, pass_filter, sample);
+		fst_reflect_ray = compute_light_pass(kg, &sd, &L, rng_hash, pass_filter, sample);
 
 	switch(type) {
 		/* data passes */
@@ -452,6 +506,22 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 			break;
 		}
 #endif
+		/* SH4 */
+		case SHADER_EVAL_SH4:
+		{
+			float3 ret_color = kernel_bake_evaluate_direct_indirect(kg,
+																	&sd,
+																	&state,
+																	L.direct_diffuse,
+																	L.indirect_diffuse,
+																	type,
+																	pass_filter);
+
+
+			bake_evaluate_SH4(ret_color, fst_reflect_ray.D, sh_out);
+
+			break;
+		}
 
 		/* extra */
 		case SHADER_EVAL_ENVIRONMENT:
@@ -491,7 +561,19 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	const float output_fac = 1.0f/num_samples;
 	const float4 scaled_result = make_float4(out.x, out.y, out.z, 1.0f) * output_fac;
 
-	output[i] = (sample == 0)? scaled_result: output[i] + scaled_result;
+	if (type == SHADER_EVAL_SH4)
+	{
+		for (int sh_i = 0; sh_i < 3; ++sh_i)
+		{
+			sh_out[sh_i] *= output_fac;
+
+			output[i * 3 + sh_i] = (sample == 0) ? sh_out[sh_i] : output[i * 3 + sh_i] + sh_out[sh_i];
+		}
+	}
+	else
+	{
+		output[i] = (sample == 0) ? scaled_result : output[i] + scaled_result;
+	}
 }
 
 #endif  /* __BAKING__ */

@@ -83,6 +83,8 @@ Session::Session(const SessionParams& params_)
 
 	/* TODO(sergey): Check if it's indeed optimal value for the split kernel. */
 	max_closure_global = 1;
+
+	render_icb = function_null;
 }
 
 Session::~Session()
@@ -156,6 +158,7 @@ void Session::reset_gpu(BufferParams& buffer_params, int samples)
 	 * that only works in the main thread */
 	thread_scoped_lock display_lock(display_mutex);
 	thread_scoped_lock buffers_lock(buffers_mutex);
+	thread_scoped_lock tile_lock(tile_mutex);
 
 	display_outdated = true;
 	reset_time = time_dt();
@@ -210,7 +213,10 @@ void Session::run_gpu()
 
 	while(!progress.get_cancel()) {
 		/* advance to next tile */
+		//std::cout << "Enter tile lock " << std::endl;
+		thread_scoped_lock tile_lock(tile_mutex);
 		bool no_tiles = !tile_manager.next();
+		tile_lock.unlock();
 
 		if(params.background) {
 			/* if no work left and in background mode, we can stop immediately */
@@ -245,7 +251,7 @@ void Session::run_gpu()
 					if(!pause)
 						break;
 				}
-			}
+			}			
 
 			if(progress.get_cancel())
 				break;
@@ -291,12 +297,22 @@ void Session::run_gpu()
 			progress.set_update();
 
 			/* wait for tonemap */
-			if(!params.background) {
-				while(gpu_need_tonemap) {
-					if(progress.get_cancel())
-						break;
+			if (render_icb == NULL)
+			{
+				if(!params.background) {
+					while(gpu_need_tonemap) {
+						if(progress.get_cancel())
+							break;
 
-					gpu_need_tonemap_cond.wait(buffers_lock);
+						gpu_need_tonemap_cond.wait(buffers_lock);
+					}
+				}
+			}
+			else
+			{ 
+				if (!params.background && gpu_need_tonemap)
+				{
+					tonemap(tile_manager.state.sample);
 				}
 			}
 
@@ -305,9 +321,20 @@ void Session::run_gpu()
 
 			tiles_written = update_progressive_refine(progress.get_cancel());
 
+			//Render result image call back
+			if (render_icb)
+			{
+				int w = tile_manager.state.buffer.full_width;
+				int h = tile_manager.state.buffer.full_height;				
+				half* p_pixel_data = (half*)display->rgba_half.copy_from_device(0, w, h);
+				render_icb(p_pixel_data, w, h, 0);
+			}
+
 			if(progress.get_cancel())
 				break;
 		}
+
+		
 	}
 
 	if(!tiles_written)
@@ -513,6 +540,14 @@ void Session::map_neighbor_tiles(RenderTile *tiles, Device *tile_device)
 	tiles[9] = tiles[4];
 }
 
+void Session::convert_buffer_from_half2float(float* dst, half* src, const int len)
+{
+	for (int i = 0; i < len; ++i)
+	{
+		dst[i] = half_to_float(src[i]);
+	}
+}
+
 void Session::unmap_neighbor_tiles(RenderTile *tiles, Device *tile_device)
 {
 	thread_scoped_lock tile_lock(tile_mutex);
@@ -643,6 +678,14 @@ void Session::run_cpu()
 		}
 
 		progress.set_update();
+
+		//Render result image call back
+		if (render_icb)
+		{
+			int w = tile_manager.state.buffer.full_width;
+			int h = tile_manager.state.buffer.full_height;
+			render_icb((half*)display->rgba_half.copy_from_device(0, w, h), w, h, 0);
+		}
 	}
 
 	if(!tiles_written)

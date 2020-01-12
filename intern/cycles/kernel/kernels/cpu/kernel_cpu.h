@@ -45,7 +45,9 @@ void KERNEL_FUNCTION_FULL_NAME(shader)(KernelGlobals *kg,
                                        int filter,
                                        int i,
                                        int offset,
-                                       int sample);
+                                       int sample,
+									   float2* uvs_array,
+									   uint2* uvs_array_offset_ele_size);
 
 /* Split kernels */
 

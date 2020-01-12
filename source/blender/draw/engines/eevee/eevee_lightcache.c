@@ -277,6 +277,7 @@ LightCache *EEVEE_lightcache_create(
 void EEVEE_lightcache_load(LightCache *lcache)
 {
 	if (lcache->grid_tx.tex == NULL && lcache->grid_tx.data) {
+
 		lcache->grid_tx.tex = GPU_texture_create_nD(
 		        lcache->grid_tx.tex_size[0],
 		        lcache->grid_tx.tex_size[1],
@@ -288,6 +289,7 @@ void EEVEE_lightcache_load(LightCache *lcache)
 		        0,
 		        false,
 		        NULL);
+
 		GPU_texture_bind(lcache->grid_tx.tex, 0);
 		GPU_texture_filter_mode(lcache->grid_tx.tex, true);
 		GPU_texture_unbind(lcache->grid_tx.tex);
@@ -317,7 +319,14 @@ void EEVEE_lightcache_load(LightCache *lcache)
 static void eevee_lightbake_readback_irradiance(LightCache *lcache)
 {
 	MEM_SAFE_FREE(lcache->grid_tx.data);
-	lcache->grid_tx.data = GPU_texture_read(lcache->grid_tx.tex, GPU_DATA_UNSIGNED_BYTE, 0);
+
+#ifdef IRRADIANCE_SH_L2
+	GPUDataFormat gpu_data_f = GPU_DATA_FLOAT;
+#else
+	GPUDataFormat gpu_data_f = GPU_DATA_UNSIGNED_BYTE;
+#endif
+
+	lcache->grid_tx.data = GPU_texture_read(lcache->grid_tx.tex, gpu_data_f, 0);
 	lcache->grid_tx.data_type = LIGHTCACHETEX_BYTE;
 	lcache->grid_tx.components = 4;
 }

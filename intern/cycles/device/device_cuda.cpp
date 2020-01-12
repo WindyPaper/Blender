@@ -1809,6 +1809,8 @@ public:
 		CUfunction cuShader;
 		CUdeviceptr d_input = cuda_device_ptr(task.shader_input);
 		CUdeviceptr d_output = cuda_device_ptr(task.shader_output);
+		CUdeviceptr d_uv_array = cuda_device_ptr(task.uvs_array);
+		CUdeviceptr d_uv_array_offset_ele_size = cuda_device_ptr(task.uvs_array_offset_ele_size);
 
 		/* get kernel function */
 		if(task.shader_eval_type >= SHADER_EVAL_BAKE) {
@@ -1833,7 +1835,7 @@ public:
 				int shader_w = min(shader_chunk_size, end - shader_x);
 
 				/* pass in parameters */
-				void *args[8];
+				void *args[10];
 				int arg = 0;
 				args[arg++] = &d_input;
 				args[arg++] = &d_output;
@@ -1845,6 +1847,8 @@ public:
 				args[arg++] = &shader_w;
 				args[arg++] = &offset;
 				args[arg++] = &sample;
+				args[arg++] = &d_uv_array;
+				args[arg++] = &d_uv_array_offset_ele_size;
 
 				/* launch kernel */
 				int threads_per_block;

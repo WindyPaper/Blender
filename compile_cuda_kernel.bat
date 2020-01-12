@@ -1,0 +1,3 @@
+"D:\CUDA\bin\nvcc.exe" ^-arch=sm_30 ^--cubin "G:\github_project\blender_fork\blender\intern\cycles\kernel\kernels\cuda\kernel.cu" ^-o "G:\github_project\blender_fork\blender\build\bin\Debug\lib\kernel_sm_30.cubin" ^-m64 --ptxas-options="-v" --use_fast_math -DNVCC -I"G:\github_project\blender_fork\blender\intern\cycles" -ccbin "d:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.22.27905\bin\HostX86\x64"
+
+PAUSE

@@ -195,7 +195,7 @@ public:
 	int geometry_flags;  /* used to distinguish meshes with no verts
 	                        and meshed for which geometry is not created */
 
-	array<int> triangles;
+	array<int> triangles; //These are indexes!!!
 	array<float3> verts;
 	array<int> shader;
 	array<bool> smooth;

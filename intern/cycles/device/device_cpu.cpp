@@ -178,7 +178,7 @@ public:
 	KernelFunctions<void(*)(KernelGlobals *, float *, int, int, int, int, int)>             path_trace_kernel;
 	KernelFunctions<void(*)(KernelGlobals *, uchar4 *, float *, float, int, int, int, int)> convert_to_half_float_kernel;
 	KernelFunctions<void(*)(KernelGlobals *, uchar4 *, float *, float, int, int, int, int)> convert_to_byte_kernel;
-	KernelFunctions<void(*)(KernelGlobals *, uint4 *, float4 *, int, int, int, int, int)>   shader_kernel;
+	KernelFunctions<void(*)(KernelGlobals *, uint4 *, float4 *, int, int, int, int, int, float2*, uint2*)>   shader_kernel;
 
 	KernelFunctions<void(*)(int, TileInfo*, int, int, float*, float*, float*, float*, float*, int*, int, int)>  filter_divide_shadow_kernel;
 	KernelFunctions<void(*)(int, TileInfo*, int, int, int, int, float*, float*, float, int*, int, int)>         filter_get_feature_kernel;
@@ -908,7 +908,9 @@ public:
 				                task.shader_filter,
 				                x,
 				                task.offset,
-				                sample);
+				                sample,
+								(float2*)task.uvs_array,
+								(uint2*)task.uvs_array_offset_ele_size);
 
 			if(task.get_cancel() || task_pool.canceled())
 				break;

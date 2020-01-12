@@ -15,6 +15,7 @@
  */
 
 #include <stdio.h>
+#include "cycles_standalone.h"
 
 #include "render/buffers.h"
 #include "render/camera.h"
@@ -22,6 +23,10 @@
 #include "render/scene.h"
 #include "render/session.h"
 #include "render/integrator.h"
+#include "render/mesh.h"
+#include "render/nodes.h"
+#include "render/object.h"
+#include "render/bake.h"
 
 #include "util/util_args.h"
 #include "util/util_foreach.h"
@@ -41,19 +46,45 @@
 
 #include "app/cycles_xml.h"
 
+#include "Importer.hpp"
+#include "scene.h"
+#include "postprocess.h"
+#include "material.h"
+
+#include "mikktspace.h"
+#include "GenerateMikkTangent.h"
+#include "rasterization_lightmap_data.h"
+
+#include <OpenEXR/IexBaseExc.h>
+#include <OpenEXR/IexThrowErrnoExc.h>
+#include <OpenEXR/ImfBoxAttribute.h>
+#include <OpenEXR/ImfChromaticitiesAttribute.h>
+#include <OpenEXR/ImfCompressionAttribute.h>
+#include <OpenEXR/ImfDeepFrameBuffer.h>
+#include <OpenEXR/ImfDeepScanLineInputPart.h>
+#include <OpenEXR/ImfDeepTiledInputPart.h>
+#include <OpenEXR/ImfDoubleAttribute.h>
+#include <OpenEXR/ImfEnvmapAttribute.h>
+#include <OpenEXR/ImfFloatAttribute.h>
+#include <OpenEXR/ImfInputPart.h>
+#include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfKeyCodeAttribute.h>
+#include <OpenEXR/ImfMatrixAttribute.h>
+#include <OpenEXR/ImfMultiPartInputFile.h>
+#include <OpenEXR/ImfPartType.h>
+#include <OpenEXR/ImfRationalAttribute.h>
+#include <OpenEXR/ImfStringAttribute.h>
+#include <OpenEXR/ImfStringVectorAttribute.h>
+#include <OpenEXR/ImfTiledInputPart.h>
+#include <OpenEXR/ImfTimeCodeAttribute.h>
+#include <OpenEXR/ImfVecAttribute.h>
+#include <OpenImageIO/thread.h>
+
+#include <render/light.h>
+
 CCL_NAMESPACE_BEGIN
 
-struct Options {
-	Session *session;
-	Scene *scene;
-	string filepath;
-	int width, height;
-	SceneParams scene_params;
-	SessionParams session_params;
-	bool quiet;
-	bool show_help, interactive, pause;
-	string output_path;
-} options;
+Options options;
 
 static void session_print(const string& str)
 {
@@ -88,7 +119,26 @@ static void session_print_status()
 	session_print(status);
 }
 
-static bool write_render(const uchar *pixels, int w, int h, int channels)
+static void session_exit()
+{
+	if (options.session) {
+		delete options.session;
+		options.session = NULL;
+	}
+
+	if (options.session_params.background && !options.quiet) {
+		session_print("Finished Rendering.");
+		printf("\n");
+	}
+}
+
+void end_session()
+{
+	session_exit();
+	default_thread_pool()->clear_threads();
+}
+
+bool write_render(const uchar *pixels, int w, int h, int channels)
 {
 	string msg = string_printf("Writing image %s", options.output_path.c_str());
 	session_print(msg);
@@ -115,6 +165,52 @@ static bool write_render(const uchar *pixels, int w, int h, int channels)
 	return true;
 }
 
+bool write_float_map(const float* pixels, int w, int h, int channels)
+{
+	string msg = string_printf("Writing image %s", options.output_path.c_str());
+	session_print(msg);
+
+	ImageOutput *out = ImageOutput::create(options.output_path);
+	if (!out) {
+		return false;
+	}
+
+	ImageSpec spec(w, h, channels, TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.channelformats.push_back(TypeDesc::FLOAT);
+	spec.attribute("oiio:ColorSpace", "Linear");
+	spec.channelnames.clear();
+	spec.channelnames.push_back("R");
+	spec.channelnames.push_back("G");
+	spec.channelnames.push_back("B");
+	spec.channelnames.push_back("A");
+
+	if (!out->open(options.output_path, spec)) {
+		return false;
+	}
+
+	/* conversion for different top/bottom convention */
+	int pixel_size = channels * sizeof(float);
+	int scanlinesize = pixel_size * w;
+	const char* curr = (char*)pixels + (h - 1) * scanlinesize;
+	out->write_image(TypeDesc::FLOAT,
+		(char*)pixels + (h - 1) * scanlinesize,
+		AutoStride,
+		-scanlinesize,
+		AutoStride);
+	//out->write_image(TypeDesc::FLOAT, /* use channel formats */
+	//	pixels);    /* pixel stride */
+
+	out->close();
+	ImageOutput::destroy(out);
+	
+	Imf::setGlobalThreadCount(0);
+
+	return true;
+}
+
 static BufferParams& session_buffer_params()
 {
 	static BufferParams buffer_params;
@@ -126,12 +222,452 @@ static BufferParams& session_buffer_params()
 	return buffer_params;
 }
 
-static void scene_init()
+static int mikk_get_num_faces(const SMikkTSpaceContext* context)
 {
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	if (userdata->mesh->subd_faces.size()) {
+		return userdata->mesh->subd_faces.size();
+	}
+	else {
+		return userdata->mesh->num_triangles();
+	}
+}
+
+static int mikk_get_num_verts_of_face(const SMikkTSpaceContext* context,
+	const int face_num)
+{
+	return 3;
+}
+
+static int mikk_vertex_index(const Mesh* mesh, const int face_num, const int vert_num)
+{
+	if (mesh->subd_faces.size()) {
+		const Mesh::SubdFace& face = mesh->subd_faces[face_num];
+		return mesh->subd_face_corners[face.start_corner + vert_num];
+	}
+	else {
+		return mesh->triangles[face_num * 3 + vert_num];
+	}
+}
+
+static int mikk_corner_index(const Mesh* mesh, const int face_num, const int vert_num)
+{
+	return face_num * 3 + vert_num;
+}
+
+static void mikk_get_position(const SMikkTSpaceContext* context,
+	float P[3],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+	const float3 vP = mesh->verts[vertex_index];
+	P[0] = vP.x;
+	P[1] = vP.y;
+	P[2] = vP.z;
+}
+
+static void mikk_get_texture_coordinate(const SMikkTSpaceContext* context,
+	float uv[2],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	if (userdata->texface != NULL) {
+		const int corner_index = mikk_corner_index(mesh, face_num, vert_num);
+		float3 tfuv = userdata->texface[corner_index];
+		uv[0] = tfuv.x;
+		uv[1] = tfuv.y;
+	}	
+	else {
+		uv[0] = 0.0f;
+		uv[1] = 0.0f;
+	}
+}
+
+static void mikk_get_normal(const SMikkTSpaceContext * context, float N[3],
+	const int face_num, const int vert_num)
+{
+	const MikkUserData* userdata = (const MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	float3 vN;
+	if (mesh->subd_faces.size()) {
+		const Mesh::SubdFace& face = mesh->subd_faces[face_num];
+		if (face.smooth) {
+			const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+			vN = userdata->vertex_normal[vertex_index];
+		}
+		else {
+			vN = face.normal(mesh);
+		}
+	}
+	else {
+		if (mesh->smooth[face_num]) {
+			const int vertex_index = mikk_vertex_index(mesh, face_num, vert_num);
+			vN = userdata->vertex_normal[vertex_index];
+		}
+		else {
+			const Mesh::Triangle tri = mesh->get_triangle(face_num);
+			vN = tri.compute_normal(&mesh->verts[0]);
+		}
+	}
+	N[0] = vN.x;
+	N[1] = vN.y;
+	N[2] = vN.z;
+}
+
+static void mikk_set_tangent_space(const SMikkTSpaceContext * context,
+	const float T[],
+	const float sign,
+	const int face_num, const int vert_num)
+{
+	MikkUserData* userdata = (MikkUserData*)context->m_pUserData;
+	const Mesh* mesh = userdata->mesh;
+	const int corner_index = mikk_corner_index(mesh, face_num, vert_num);
+	userdata->tangent[corner_index] = make_float3(T[0], T[1], T[2]);
+	if (userdata->tangent_sign != NULL) {
+		userdata->tangent_sign[corner_index] = sign;
+	}
+}
+
+void create_mikk_tangent(Mesh* cycle_mesh)
+{	
+	/* Setup userdata. */
+	//MikkUserData userdata(b_mesh, layer_name, mesh, tangent, tangent_sign);
+	/* Setup interface. */
+	SMikkTSpaceInterface sm_interface;
+	MikkUserData mikk_user_data(cycle_mesh);
+	memset(&sm_interface, 0, sizeof(sm_interface));
+	sm_interface.m_getNumFaces = mikk_get_num_faces;
+	sm_interface.m_getNumVerticesOfFace = mikk_get_num_verts_of_face;
+	sm_interface.m_getPosition = mikk_get_position;
+	sm_interface.m_getTexCoord = mikk_get_texture_coordinate;
+	sm_interface.m_getNormal = mikk_get_normal;
+	sm_interface.m_setTSpaceBasic = mikk_set_tangent_space;
+	/* Setup context. */
+	SMikkTSpaceContext context;
+	memset(&context, 0, sizeof(context));
+	context.m_pUserData = &mikk_user_data;
+	context.m_pInterface = &sm_interface;
+	/* Compute tangents. */
+	genTangSpaceDefault(&context);
+}
+
+Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm)
+{
+	Mesh* mesh = new Mesh();
+	scene->meshes.push_back(mesh);
+
+	Object* object = new Object();
+	object->mesh = mesh;
+	object->tfm = tfm;
+	scene->objects.push_back(object);
+
+	return mesh;
+}
+
+int create_pbr_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
+{
+	ShaderGraph* graph = new ShaderGraph();
+
+	ImageTextureNode* img_node = new ImageTextureNode();
+	img_node->filename = diff_tex;
+	graph->add(img_node);
+
+	ImageTextureNode* mtl_img_node = new ImageTextureNode();
+	mtl_img_node->filename = mtl_tex;
+	graph->add(mtl_img_node);
+
+	ImageTextureNode* normal_img_node = new ImageTextureNode();
+	normal_img_node->filename = normal_tex;
+	//normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	graph->add(normal_img_node);
+
+	NormalMapNode* change_to_normalmap_node = new NormalMapNode();
+	change_to_normalmap_node->space = NODE_NORMAL_MAP_TANGENT;
+	graph->add(change_to_normalmap_node);
+	//change_to_normalmap_node->normal_osl = make_float3(1, 0, 0);
+	graph->connect(normal_img_node->output("Color"), change_to_normalmap_node->input("Color"));
+
+	DiffuseBsdfNode* diffuse = new DiffuseBsdfNode();
+	//diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+	graph->add(diffuse);
+
+	graph->connect(img_node->output("Color"), diffuse->input("Color"));
+	//comment for baking	
+	//graph->connect(change_to_normalmap_node->output("Normal"), diffuse->input("Normal"));
+
+	graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
+
+	Shader* shader = new Shader();
+	shader->name = "pbr_default_surface";
+	shader->graph = graph;
+	scene->shaders.push_back(shader);
+	//scene->default_surface = shader;
+	shader->tag_update(scene);
+
+	return scene->shaders.size() - 1;
+}
+
+//static void create_default_shader(Scene* scene, const std::string& diff_tex, const std::string& mtl_tex, const std::string& normal_tex)
+//{
+//	/* default surface */
+//	{		
+//		create_pbr_shader(scene, diff_tex, mtl_tex, normal_tex);
+//	}
+//
+//	/* default light */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		EmissionNode* emission = new EmissionNode();
+//		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+//		emission->strength = 0.0f;
+//		graph->add(emission);
+//
+//		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_light";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_light = shader;
+//	}
+//
+//	/* default background */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_background";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_background = shader;
+//	}
+//
+//	/* default empty */
+//	{
+//		ShaderGraph* graph = new ShaderGraph();
+//
+//		Shader* shader = new Shader();
+//		shader->name = "default_empty";
+//		shader->graph = graph;
+//		scene->shaders.push_back(shader);
+//		scene->default_empty = shader;
+//	}
+//}
+
+void fbx_add_default_shader(Scene* scene)
+{
+	/* default light */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		EmissionNode* emission = new EmissionNode();
+		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+		emission->strength = 0.0f;
+		graph->add(emission);
+
+		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
+
+		Shader* shader = new Shader();
+		shader->name = "default_light";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_light = shader;
+	}
+
+	/* default background */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_background";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_background = shader;
+	}
+
+	/* default empty */
+	{
+		ShaderGraph* graph = new ShaderGraph();
+
+		Shader* shader = new Shader();
+		shader->name = "default_empty";
+		shader->graph = graph;
+		scene->shaders.push_back(shader);
+		scene->default_empty = shader;
+	}
+
+	ShaderGraph *gra = scene->default_background->graph;
+	BackgroundNode* bk_node = new BackgroundNode();
+	gra->add(bk_node);
+	gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
+
+	ColorNode* cb_node = new ColorNode();
+	cb_node->value = make_float3(0.8, 0.8, 0.8);
+	gra->add(cb_node);
+	gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+
+	ValueNode* v_node = new ValueNode();
+	v_node->value = 1.0;
+	gra->add(v_node);
+	gra->connect(v_node->output("Value"), bk_node->input("Strength"));
+}
+
+static int TranslateMaterialCycles(Scene* scene, const aiMaterial* ai_mat, const std::string &dir_name)
+{
+	aiString ai_normal_str;
+	if (ai_mat->GetTexture(aiTextureType_NORMALS, 0, &ai_normal_str) == aiReturn_SUCCESS ||
+		ai_mat->GetTexture(aiTextureType_HEIGHT, 0, &ai_normal_str) == aiReturn_SUCCESS)
+	{		
+		
+	}
+
+	aiString ai_diffuse_str;
+	if (ai_mat->GetTexture(aiTextureType_DIFFUSE, 0, &ai_diffuse_str) == aiReturn_SUCCESS)
+	{
+		
+	}
+
+	return create_pbr_shader(scene, path_join(dir_name, ai_diffuse_str.C_Str()), "", path_join(dir_name, ai_normal_str.C_Str()));
+}
+
+static void assimp_read_file(Scene *scene, std::string filename)
+{	
+	std::string dir_name = path_dirname(filename);
+
+	Assimp::Importer importer;
+	unsigned int flags = aiProcess_MakeLeftHanded |
+		aiProcess_Triangulate |
+		aiProcess_JoinIdenticalVertices |
+		aiProcess_PreTransformVertices |
+		aiProcess_RemoveRedundantMaterials |
+		aiProcess_OptimizeMeshes |
+		aiProcess_FlipWindingOrder;
+	const aiScene* import_fbx_scene = importer.ReadFile(filename, flags);
+
+	fbx_add_default_shader(scene);
+
+	if (import_fbx_scene == NULL)
+	{
+		std::string error_code = importer.GetErrorString();
+		std::cout << ("load fbx file failed! " + error_code) << std::endl;
+		return;
+	}
+
+	unsigned int mesh_num = import_fbx_scene->mNumMeshes;
+	unsigned int mat_num = import_fbx_scene->mNumMaterials;
+
+	std::vector<int> cycles_shader_indexs(mat_num);
+	for (int i = 0; i < mat_num; ++i)
+	{
+		cycles_shader_indexs[i] = TranslateMaterialCycles(scene, import_fbx_scene->mMaterials[i], dir_name);
+	}	
+
+	int shader = 0;
+	bool smooth = true;
+
+	for (unsigned int mesh_i = 0; mesh_i < mesh_num; ++mesh_i)
+	{
+		aiMesh* mesh_ptr = import_fbx_scene->mMeshes[mesh_i];
+		unsigned int triangle_num = mesh_ptr->mNumFaces;
+		unsigned int vertex_num = mesh_ptr->mNumVertices;
+
+		Mesh* p_cy_mesh = fbx_add_mesh(scene, transform_identity());
+		p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+
+		const aiVector3D* aivertices_data = mesh_ptr->mVertices;
+		const aiVector3D* aiverteces_normal_data = mesh_ptr->mNormals;
+		p_cy_mesh->verts.resize(vertex_num);
+
+		//p_cy_mesh->reserve_mesh(vertex_num, triangle_num);
+
+		p_cy_mesh->used_shaders.push_back(scene->shaders[cycles_shader_indexs[mesh_i]]);
+
+		Attribute* attr_N = p_cy_mesh->attributes.add(ATTR_STD_VERTEX_NORMAL);
+		float3* N = attr_N->data_float3();
+
+		for (int i = 0; i < vertex_num; ++i, ++N)
+		{
+			p_cy_mesh->verts[i] = make_float3(aivertices_data[i].x, aivertices_data[i].y, aivertices_data[i].z);
+			*N = make_float3(aiverteces_normal_data[i].x, aiverteces_normal_data[i].y, aiverteces_normal_data[i].z);
+		}		
+
+		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+		{
+			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
+			p_cy_mesh->add_triangle(p_face->mIndices[0], p_face->mIndices[1], p_face->mIndices[2], shader, smooth);			
+		}
+
+		ustring name = ustring("UVMap");
+		Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
+		ustring lightmap_name = ustring("lightmap_uv");
+		Attribute* lightmap_attr = p_cy_mesh->attributes.add(ATTR_STD_UV, lightmap_name);
+		float3* fdata = attr->data_float3();
+		float3* lightmap_data = lightmap_attr->data_float3();
+		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
+		{
+			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
+			int iv1 = p_face->mIndices[0];
+			int iv2 = p_face->mIndices[1];
+			int iv3 = p_face->mIndices[2];
+
+			if (mesh_ptr->mTextureCoords[0])
+			{
+				aiVector3D* uv0 = mesh_ptr->mTextureCoords[0];				
+				fdata[tri_i * 3] = make_float3(uv0[iv1].x, uv0[iv1].y, uv0[iv1].z);
+				fdata[tri_i * 3 + 1] = make_float3(uv0[iv2].x, uv0[iv2].y, uv0[iv2].z);
+				fdata[tri_i * 3 + 2] = make_float3(uv0[iv3].x, uv0[iv3].y, uv0[iv3].z);
+			}
+
+			if (mesh_ptr->mTextureCoords[1])
+			{
+				aiVector3D* uv1 = mesh_ptr->mTextureCoords[1];
+				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
+				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
+				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
+				lightmap_data[tri_i * 3] = make_float3(uv1[iv1].x, uv1[iv1].y, uv1[iv1].z);
+				lightmap_data[tri_i * 3 + 1] = make_float3(uv1[iv2].x, uv1[iv2].y, uv1[iv2].z);
+				lightmap_data[tri_i * 3 + 2] = make_float3(uv1[iv3].x, uv1[iv3].y, uv1[iv3].z);
+			}
+		}
+		//memcpy(fdata, &mesh_ptr->mTextureCoords[0][0], sizeof(aiVector3D) * triangle_num * 3);
+
+		
+
+		//scene->default_background
+
+		create_mikk_tangent(p_cy_mesh);
+
+		//create lightmap parameterization data
+		/*RasterizationLightmapData ras;
+		ras.raster_triangle(*p_cy_mesh, 128, 128);
+		Progress p;
+		float* ret = new float[128 * 128];
+		memset(ret, 0, 128 * 128 * sizeof(float));
+		int pass_filter = BakePassFilterCombos::BAKE_FILTER_COMBINED;
+		scene->bake_manager->bake(scene->device, &scene->dscene, scene, p, ShaderEvalType::SHADER_EVAL_BAKE, pass_filter, ras.get_bake_data(), ret);
+
+		delete ret;*/
+	}
+}
+
+static void scene_init()
+{	
 	options.scene = new Scene(options.scene_params, options.session->device);
 
 	/* Read XML */
-	xml_read_file(options.scene, options.filepath.c_str());
+	std::transform(options.filepath.begin(), options.filepath.end(), options.filepath.begin(), ::tolower);
+	if (options.filepath.find(".fbx") != std::string::npos || options.filepath.find(".dae") != std::string::npos)
+	{
+		assimp_read_file(options.scene, options.filepath.c_str());
+	}
+	else
+	{
+		xml_read_file(options.scene, options.filepath.c_str());
+	}
 
 	/* Camera width/height override? */
 	if(!(options.width == 0 || options.height == 0)) {
@@ -145,6 +681,98 @@ static void scene_init()
 
 	/* Calculate Viewplane */
 	options.scene->camera->compute_auto_viewplane();
+	Transform matrix;
+
+	matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
+	options.scene->camera->matrix = matrix;
+}
+
+void start_render_image()
+{
+	options.session->reset(session_buffer_params(), options.session_params.samples);
+	options.session->start();
+}
+
+static void save_tga_map(int w, int h, int channel, const std::string &output_name, const float* input_data)
+{
+	uchar* out_c = new uchar[w * h * channel];
+	for (int i = 0; i < w * h * channel; i = i + channel)
+	{
+		out_c[i] = (uchar)(input_data[i] * 255);
+		out_c[i + 1] = (uchar)(input_data[i + 1] * 255);
+		out_c[i + 2] = (uchar)(input_data[i + 2] * 255);
+		out_c[i + 3] = (uchar)(input_data[i + 3] * 255);
+	}
+	options.output_path = output_name;
+	write_render(out_c, w, h, channel);
+
+	delete[] out_c;
+}
+
+static void save_sh_map(int w, int h, int sh_num, const std::string& output_name, const float* input_data)
+{
+	if (sh_num == 4)
+	{
+		float *sh_map = new float[w * h * 4];
+		memset(sh_map, 0, w * h * 4 * sizeof(float));
+		for (int i = 0; i < 3; ++i)
+		{
+			for (int hi = 0; hi < h; ++hi)
+			{
+				for (int wi = 0; wi < w; ++wi)
+				{
+					const float *curr = &input_data[wi * 4 * 3 + i*4 + hi * w * 4 * 3];
+					memcpy(&sh_map[wi * 4 + hi * w * 4], curr, sizeof(float) * 4);
+					/*sh_map[wi * 4 + hi * w * 4 + 0] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 1] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 2] = 1.0f;
+					sh_map[wi * 4 + hi * w * 4 + 3] = 1.0f;*/
+					
+					//sh_map[wi + hi * w] = make_float4(1.0f, 1.0f, 1.0f, 1.0f);
+				}
+			}
+
+			char save_exr_name[256];
+			sprintf(save_exr_name, "E:/unity_project/TestBaker/Assets/sh4_%d.exr", i);
+			options.output_path = save_exr_name;
+			write_float_map(sh_map, w, h, 4);
+			memset(sh_map, 0, w * h * 4 * sizeof(float));
+		}
+
+		delete[] sh_map;
+	}
+}
+
+void bake_light_map()
+{
+	options.session->load_kernels();
+	options.session->update_scene();
+	Scene* scene = options.session->scene;
+	RasterizationLightmapData* ras = new RasterizationLightmapData(8);
+	const int size = 128;
+	ras->raster_triangle((const ccl::Mesh**)&scene->meshes[0], scene->meshes.size(), size, size);
+	Progress p;
+	int bake_pixel_size = 4;
+	ShaderEvalType shader_value_type = ShaderEvalType::SHADER_EVAL_SH4;
+	if (shader_value_type == SHADER_EVAL_SH4)
+	{
+		bake_pixel_size = 4 * 3;
+	}
+	int bake_output_buffer_size = size * size * bake_pixel_size;
+	float* ret = new float[bake_output_buffer_size];
+	memset(ret, 0, bake_output_buffer_size * sizeof(float));
+	int pass_filter = BAKE_FILTER_INDIRECT;
+	scene->bake_manager->bake(scene->device, &scene->dscene, scene, options.session->progress, shader_value_type, pass_filter, ras->get_bake_data(), ret);
+
+	const int channel = 4;
+	if (shader_value_type == SHADER_EVAL_SH4)
+	{
+		save_sh_map(size, size, 4, "", ret);
+	}
+	else
+	{
+		save_tga_map(size, size, channel, "E:/unity_project/TestBaker/Assets/128KK128.tga", ret);
+	}
 }
 
 static void session_init()
@@ -163,22 +791,13 @@ static void session_init()
 	scene_init();
 	options.session->scene = options.scene;
 
-	options.session->reset(session_buffer_params(), options.session_params.samples);
-	options.session->start();
+	start_render_image();
+	 
+	//For baking
+	//bake_light_map();
 }
 
-static void session_exit()
-{
-	if(options.session) {
-		delete options.session;
-		options.session = NULL;
-	}
 
-	if(options.session_params.background && !options.quiet) {
-		session_print("Finished Rendering.");
-		printf("\n");
-	}
-}
 
 #ifdef WITH_CYCLES_STANDALONE_GUI
 static void display_info(Progress& progress)
@@ -514,5 +1133,9 @@ int main(int argc, const char **argv)
 	}
 #endif
 
+	system("pause");
 	return 0;
 }
+
+
+

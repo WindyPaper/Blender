@@ -253,6 +253,7 @@ class _draw_left_context_mode:
             if brush is None:
                 return
 
+
             from .properties_paint_common import (
                 UnifiedPaintPanel,
                 brush_basic_texpaint_settings,
@@ -261,6 +262,7 @@ class _draw_left_context_mode:
             if capabilities.has_color:
                 UnifiedPaintPanel.prop_unified_color(layout, context, brush, "color", text="")
             brush_basic_texpaint_settings(layout, context, brush, compact=True)
+
 
         @staticmethod
         def PAINT_VERTEX(context, layout, tool):
@@ -274,6 +276,7 @@ class _draw_left_context_mode:
             if brush is None:
                 return
 
+
             from .properties_paint_common import (
                 UnifiedPaintPanel,
                 brush_basic_vpaint_settings,
@@ -282,6 +285,7 @@ class _draw_left_context_mode:
             if capabilities.has_color:
                 UnifiedPaintPanel.prop_unified_color(layout, context, brush, "color", text="")
             brush_basic_vpaint_settings(layout, context, brush, compact=True)
+
 
         @staticmethod
         def PAINT_WEIGHT(context, layout, tool):
@@ -294,8 +298,10 @@ class _draw_left_context_mode:
             if brush is None:
                 return
 
+
             from .properties_paint_common import brush_basic_wpaint_settings
             brush_basic_wpaint_settings(layout, context, brush, compact=True)
+
 
         @staticmethod
         def PAINT_GPENCIL(context, layout, tool):
@@ -457,6 +463,7 @@ class _draw_left_context_mode:
             if brush is None:
                 return
 
+
             from .properties_paint_common import (
                 UnifiedPaintPanel,
                 brush_basic_texpaint_settings,
@@ -465,6 +472,7 @@ class _draw_left_context_mode:
             if capabilities.has_color:
                 UnifiedPaintPanel.prop_unified_color(layout, context, brush, "color", text="")
             brush_basic_texpaint_settings(layout, context, brush, compact=True)
+
 
 
 class TOPBAR_PT_gpencil_layers(Panel):

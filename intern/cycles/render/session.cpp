@@ -89,8 +89,7 @@ Session::Session(const SessionParams &params_)
 
   /* TODO(sergey): Check if it's indeed optimal value for the split kernel. */
   max_closure_global = 1;
-
-	render_icb = function_null;
+  render_icb = function_null;
 }
 
 Session::~Session()
@@ -216,10 +215,9 @@ void Session::run_gpu()
   last_update_time = time_dt();
 
   progress.set_render_start_time();
-	
+
   while (!progress.get_cancel()) {
     /* advance to next tile */
-    thread_scoped_lock tile_lock(tile_mutex);
     bool no_tiles = !tile_manager.next();
 
     DeviceKernelStatus kernel_state = DEVICE_KERNEL_UNKNOWN;
@@ -302,57 +300,43 @@ void Session::run_gpu()
       render();
 
       device->task_wait();
-		
-		/* wait for tonemap */
-		if (render_icb == NULL)
-		{
-			if(!params.background) {
-				while(gpu_need_tonemap) {
-					if(progress.get_cancel())
-						break;
 
-					gpu_need_display_buffer_update_cond.wait(buffers_lock);
-				}
-			}
-		}
-		/*else
-		{ 
-			if (!params.background && gpu_need_tonemap)
-			{
-				tonemap(tile_manager.state.sample);
-			}
-		}*/
+      if (!device->error_message().empty())
+        progress.set_cancel(device->error_message());
+
+      /* update status and timing */
+      update_status_time();
 
       gpu_need_display_buffer_update = true;
       gpu_draw_ready = true;
       progress.set_update();
 
       /* wait for until display buffer is updated */
-      if (!params.background) {
-        while (gpu_need_display_buffer_update) {
-          if (progress.get_cancel())
-            break;
+      if (render_icb == function_null) {
+        if (!params.background) {
+          while (gpu_need_display_buffer_update) {
+            if (progress.get_cancel())
+              break;
 
-			//Render result image call back
-			if (render_icb)
-			{
-				int w = tile_manager.state.buffer.full_width;
-				int h = tile_manager.state.buffer.full_height;				
-				half* p_pixel_data = (half*)display->rgba_half.copy_from_device(0, w, h);
-				render_icb(p_pixel_data, w, h, 0);
-			}
-
-			if(progress.get_cancel())
-				break;
-		}
-
-		
-	}
+            gpu_need_display_buffer_update_cond.wait(buffers_lock);
+          }
+        }
+      }      
 
       if (!device->error_message().empty())
         progress.set_error(device->error_message());
 
       tiles_written = update_progressive_refine(progress.get_cancel());
+
+	  // Render result image call back 
+	  if (render_icb)
+      {
+        int w = tile_manager.state.buffer.full_width;
+        int h = tile_manager.state.buffer.full_height;
+        half *p_pixel_data = (half *)display->rgba_half.copy_from_device(0, w, h);
+        render_icb(p_pixel_data, w, h, 0);
+      }
+
 
       if (progress.get_cancel())
         break;
@@ -364,6 +348,7 @@ void Session::run_gpu()
 }
 
 /* CPU Session */
+
 void Session::reset_cpu(BufferParams &buffer_params, int samples)
 {
   thread_scoped_lock reset_lock(delayed_reset.mutex);
@@ -563,14 +548,6 @@ void Session::map_neighbor_tiles(RenderTile *tiles, Device *tile_device)
   tiles[9] = tiles[4];
 }
 
-void Session::convert_buffer_from_half2float(float* dst, half* src, const int len)
-{
-	for (int i = 0; i < len; ++i)
-	{
-		dst[i] = half_to_float(src[i]);
-	}
-}
-
 void Session::unmap_neighbor_tiles(RenderTile *tiles, Device *tile_device)
 {
   thread_scoped_lock tile_lock(tile_mutex);
@@ -698,16 +675,13 @@ void Session::run_cpu()
       thread_scoped_lock buffers_lock(buffers_mutex);
       thread_scoped_lock display_lock(display_mutex);
 
-		progress.set_update();
+      // Render result image call back
+      if (render_icb) {
+        int w = tile_manager.state.buffer.full_width;
+        int h = tile_manager.state.buffer.full_height;
+        render_icb((half *)display->rgba_half.copy_from_device(0, w, h), w, h, 0);
+      }
 
-		//Render result image call back
-		if (render_icb)
-		{
-			int w = tile_manager.state.buffer.full_width;
-			int h = tile_manager.state.buffer.full_height;
-			render_icb((half*)display->rgba_half.copy_from_device(0, w, h), w, h, 0);
-		}
-	}
       if (delayed_reset.do_reset) {
         /* reset rendering if request from main thread */
         delayed_reset.do_reset = false;
@@ -726,7 +700,7 @@ void Session::run_cpu()
     }
 
     progress.set_update();
-  
+  }
 
   if (!tiles_written)
     update_progressive_refine(true);

@@ -211,7 +211,6 @@ class Session {
   volatile bool gpu_draw_ready;
   volatile bool gpu_need_display_buffer_update;
   thread_condition_variable gpu_need_display_buffer_update_cond;
-  volatile bool gpu_need_tonemap;
 
   bool pause;
   thread_condition_variable pause_cond;

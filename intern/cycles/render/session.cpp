@@ -164,7 +164,7 @@ void Session::reset_gpu(BufferParams &buffer_params, int samples)
    * that only works in the main thread */
   thread_scoped_lock display_lock(display_mutex);
   thread_scoped_lock buffers_lock(buffers_mutex);
-	thread_scoped_lock tile_lock(tile_mutex);
+  thread_scoped_lock tile_lock(tile_mutex);
 
   display_outdated = true;
   reset_time = time_dt();
@@ -216,16 +216,11 @@ void Session::run_gpu()
   last_update_time = time_dt();
 
   progress.set_render_start_time();
-
-	while(!progress.get_cancel()) {
-		/* advance to next tile */
-		//std::cout << "Enter tile lock " << std::endl;
-		thread_scoped_lock tile_lock(tile_mutex);
-		bool no_tiles = !tile_manager.next();
+	
   while (!progress.get_cancel()) {
     /* advance to next tile */
+    thread_scoped_lock tile_lock(tile_mutex);
     bool no_tiles = !tile_manager.next();
-		tile_lock.unlock();
 
     DeviceKernelStatus kernel_state = DEVICE_KERNEL_UNKNOWN;
     if (no_tiles) {
@@ -307,26 +302,26 @@ void Session::run_gpu()
       render();
 
       device->task_wait();
+		
+		/* wait for tonemap */
+		if (render_icb == NULL)
+		{
+			if(!params.background) {
+				while(gpu_need_tonemap) {
+					if(progress.get_cancel())
+						break;
 
-			/* wait for tonemap */
-			if (render_icb == NULL)
+					gpu_need_display_buffer_update_cond.wait(buffers_lock);
+				}
+			}
+		}
+		/*else
+		{ 
+			if (!params.background && gpu_need_tonemap)
 			{
-				if(!params.background) {
-					while(gpu_need_tonemap) {
-						if(progress.get_cancel())
-							break;
-
-						gpu_need_tonemap_cond.wait(buffers_lock);
-					}
-				}
+				tonemap(tile_manager.state.sample);
 			}
-			else
-			{ 
-				if (!params.background && gpu_need_tonemap)
-				{
-					tonemap(tile_manager.state.sample);
-				}
-			}
+		}*/
 
       gpu_need_display_buffer_update = true;
       gpu_draw_ready = true;
@@ -369,7 +364,6 @@ void Session::run_gpu()
 }
 
 /* CPU Session */
-
 void Session::reset_cpu(BufferParams &buffer_params, int samples)
 {
   thread_scoped_lock reset_lock(delayed_reset.mutex);
@@ -732,7 +726,7 @@ void Session::run_cpu()
     }
 
     progress.set_update();
-  }
+  
 
   if (!tiles_written)
     update_progressive_refine(true);

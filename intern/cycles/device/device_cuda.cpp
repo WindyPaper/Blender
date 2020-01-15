@@ -1908,9 +1908,7 @@ class CUDADevice : public Device {
     unmap_pixels((rgba_byte) ? rgba_byte : rgba_half);
 
     cuda_assert(cuCtxSynchronize());
-  }
-		CUdeviceptr d_uv_array = cuda_device_ptr(task.uvs_array);
-		CUdeviceptr d_uv_array_offset_ele_size = cuda_device_ptr(task.uvs_array_offset_ele_size);
+  }		
 
   void shader(DeviceTask &task)
   {
@@ -1922,6 +1920,8 @@ class CUDADevice : public Device {
     CUfunction cuShader;
     CUdeviceptr d_input = cuda_device_ptr(task.shader_input);
     CUdeviceptr d_output = cuda_device_ptr(task.shader_output);
+    CUdeviceptr d_uv_array = cuda_device_ptr(task.uvs_array);
+	CUdeviceptr d_uv_array_offset_ele_size = cuda_device_ptr(task.uvs_array_offset_ele_size);
 
     /* get kernel function */
     if (task.shader_eval_type >= SHADER_EVAL_BAKE) {
@@ -1932,9 +1932,7 @@ class CUDADevice : public Device {
     }
     else {
       cuda_assert(cuModuleGetFunction(&cuShader, cuModule, "kernel_cuda_background"));
-    }
-				args[arg++] = &d_uv_array;
-				args[arg++] = &d_uv_array_offset_ele_size;
+    }				
 
     /* do tasks in smaller chunks, so we can cancel it */
     const int shader_chunk_size = 65536;
@@ -1948,7 +1946,7 @@ class CUDADevice : public Device {
         int shader_w = min(shader_chunk_size, end - shader_x);
 
         /* pass in parameters */
-        void *args[8];
+        void *args[10];
         int arg = 0;
         args[arg++] = &d_input;
         args[arg++] = &d_output;
@@ -1960,6 +1958,8 @@ class CUDADevice : public Device {
         args[arg++] = &shader_w;
         args[arg++] = &offset;
         args[arg++] = &sample;
+        args[arg++] = &d_uv_array;
+        args[arg++] = &d_uv_array_offset_ele_size;
 
         /* launch kernel */
         int threads_per_block;

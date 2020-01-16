@@ -6,6 +6,7 @@
 CCL_NAMESPACE_BEGIN
 class Mesh;
 class float3;
+class float2;
 CCL_NAMESPACE_END
 
 
@@ -14,7 +15,7 @@ struct MikkUserData
 	MikkUserData(ccl::Mesh* cycle_mesh);
 
 	ccl::Mesh* mesh;
-	ccl::float3* texface;
+	ccl::float2* texface;
 
 	ccl::float3* vertex_normal;
 

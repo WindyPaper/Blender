@@ -29,7 +29,7 @@ MikkUserData::MikkUserData(ccl::Mesh* cycle_mesh) :
 	AttributeSet& attributes = (mesh->subd_faces.size()) ?
 		mesh->subd_attributes : mesh->attributes;
 
-	texface = attributes.find(ATTR_STD_UV)->data_float3();
+	texface = attributes.find(ATTR_STD_UV)->data_float2();
 	Attribute* attr_vN = attributes.find(ATTR_STD_VERTEX_NORMAL);
 	vertex_normal = attr_vN->data_float3();
 

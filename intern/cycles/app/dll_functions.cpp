@@ -141,9 +141,9 @@ int create_unity2cycles_shader(Scene* scene, const CyclesMtlData *mtl_data)
 	TextureCoordinateNode* tex_uv_coord_node = new TextureCoordinateNode();
 	graph->add(tex_uv_coord_node);
 	MappingNode* tex_scale_mapping_node = new MappingNode();
-	tex_scale_mapping_node->tex_mapping.scale.x = mtl_data->tiling_x;
-	tex_scale_mapping_node->tex_mapping.scale.y = mtl_data->tiling_y;
-	tex_scale_mapping_node->tex_mapping.type = tex_scale_mapping_node->tex_mapping.VECTOR;
+	//tex_scale_mapping_node->tex_mapping.scale.x = mtl_data->tiling_x;
+	//tex_scale_mapping_node->tex_mapping.scale.y = mtl_data->tiling_y;
+	//tex_scale_mapping_node->tex_mapping.type = tex_scale_mapping_node->tex_mapping.VECTOR;
 	graph->add(tex_scale_mapping_node);
 	
 	graph->connect(tex_uv_coord_node->output("UV"), tex_scale_mapping_node->input("Vector"));
@@ -155,13 +155,13 @@ int create_unity2cycles_shader(Scene* scene, const CyclesMtlData *mtl_data)
 
 	ImageTextureNode* mtl_img_node = new ImageTextureNode();
 	mtl_img_node->filename = mtl_data->mtl_tex_name;
-	mtl_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	//mtl_img_node->color_space = NODE_COLOR_SPACE_NONE;
 	graph->add(mtl_img_node);
 	graph->connect(tex_scale_mapping_node->output("Vector"), mtl_img_node->input("Vector"));
 
 	ImageTextureNode* normal_img_node = new ImageTextureNode();
 	normal_img_node->filename = mtl_data->normal_tex_name;
-	normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
+	//normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
 	graph->add(normal_img_node);
 	graph->connect(tex_scale_mapping_node->output("Vector"), normal_img_node->input("Vector"));
 

@@ -51,7 +51,7 @@
 #include "postprocess.h"
 #include "material.h"
 
-#include "mikktspace.h"
+#include "mikktspace/mikktspace.h"
 #include "GenerateMikkTangent.h"
 #include "rasterization_lightmap_data.h"
 
@@ -215,6 +215,7 @@ static BufferParams& session_buffer_params()
   buffer_params.height = options.height;
   buffer_params.full_width = options.width;
   buffer_params.full_height = options.height;
+  Pass::add(PASS_COMBINED, buffer_params.passes);
 
   return buffer_params;
 }
@@ -273,7 +274,7 @@ static void mikk_get_texture_coordinate(const SMikkTSpaceContext* context,
 	const Mesh* mesh = userdata->mesh;
 	if (userdata->texface != NULL) {
 		const int corner_index = mikk_corner_index(mesh, face_num, vert_num);
-		float3 tfuv = userdata->texface[corner_index];
+		float2 tfuv = userdata->texface[corner_index];
 		uv[0] = tfuv.x;
 		uv[1] = tfuv.y;
 	}	
@@ -602,8 +603,8 @@ static void assimp_read_file(Scene *scene, std::string filename)
 		Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
 		ustring lightmap_name = ustring("lightmap_uv");
 		Attribute* lightmap_attr = p_cy_mesh->attributes.add(ATTR_STD_UV, lightmap_name);
-		float3* fdata = attr->data_float3();
-		float3* lightmap_data = lightmap_attr->data_float3();
+		float2 *fdata = attr->data_float2();
+		float2 *lightmap_data = lightmap_attr->data_float2();
 		for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
 		{
 			const aiFace* p_face = &mesh_ptr->mFaces[tri_i];
@@ -614,9 +615,9 @@ static void assimp_read_file(Scene *scene, std::string filename)
 			if (mesh_ptr->mTextureCoords[0])
 			{
 				aiVector3D* uv0 = mesh_ptr->mTextureCoords[0];				
-				fdata[tri_i * 3] = make_float3(uv0[iv1].x, uv0[iv1].y, uv0[iv1].z);
-				fdata[tri_i * 3 + 1] = make_float3(uv0[iv2].x, uv0[iv2].y, uv0[iv2].z);
-				fdata[tri_i * 3 + 2] = make_float3(uv0[iv3].x, uv0[iv3].y, uv0[iv3].z);
+				fdata[tri_i * 3] = make_float2(uv0[iv1].x, uv0[iv1].y);
+				fdata[tri_i * 3 + 1] = make_float2(uv0[iv2].x, uv0[iv2].y);
+				fdata[tri_i * 3 + 2] = make_float2(uv0[iv3].x, uv0[iv3].y);
 			}
 
 			if (mesh_ptr->mTextureCoords[1])
@@ -625,9 +626,9 @@ static void assimp_read_file(Scene *scene, std::string filename)
 				//float3 t1 = make_float3(mesh_ptr->mTextureCoords[0][iv1].x, mesh_ptr->mTextureCoords[0][iv1].y, mesh_ptr->mTextureCoords[0][iv1].z);
 				//float3 t2 = make_float3(mesh_ptr->mTextureCoords[0][iv2].x, mesh_ptr->mTextureCoords[0][iv2].y, mesh_ptr->mTextureCoords[0][iv2].z);
 				//float3 t3 = make_float3(mesh_ptr->mTextureCoords[0][iv3].x, mesh_ptr->mTextureCoords[0][iv3].y, mesh_ptr->mTextureCoords[0][iv3].z);
-				lightmap_data[tri_i * 3] = make_float3(uv1[iv1].x, uv1[iv1].y, uv1[iv1].z);
-				lightmap_data[tri_i * 3 + 1] = make_float3(uv1[iv2].x, uv1[iv2].y, uv1[iv2].z);
-				lightmap_data[tri_i * 3 + 2] = make_float3(uv1[iv3].x, uv1[iv3].y, uv1[iv3].z);
+				lightmap_data[tri_i * 3] = make_float2(uv1[iv1].x, uv1[iv1].y);
+				lightmap_data[tri_i * 3 + 1] = make_float2(uv1[iv2].x, uv1[iv2].y);
+				lightmap_data[tri_i * 3 + 2] = make_float2(uv1[iv3].x, uv1[iv3].y);
 			}
 		}
 		//memcpy(fdata, &mesh_ptr->mTextureCoords[0][0], sizeof(aiVector3D) * triangle_num * 3);
@@ -682,6 +683,12 @@ static void scene_init()
 
 	matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
 	options.scene->camera->matrix = matrix;
+
+  //film pass
+  options.scene->film->display_pass = PASS_COMBINED;
+  options.scene->film->tag_passes_update(options.scene, session_buffer_params().passes);
+  options.scene->film->tag_update(options.scene);
+  options.scene->integrator->tag_update(options.scene);
 }
 
 void start_render_image()

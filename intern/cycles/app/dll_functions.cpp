@@ -9,6 +9,7 @@
 #include "render/scene.h"
 #include "render/camera.h"
 #include "render/light.h"
+#include "render/integrator.h"
 #include "util/util_path.h"
 
 //CCL_NAMESPACE_BEGIN
@@ -231,6 +232,12 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
 		options.scene->camera->matrix = matrix;
 
 		fbx_add_default_shader(scene);
+
+		// film pass
+		options.scene->film->display_pass = PassType::PASS_COMBINED;
+		options.scene->film->tag_passes_update(options.scene, session_buffer_params().passes);
+		options.scene->film->tag_update(options.scene);
+		options.scene->integrator->tag_update(options.scene);
 	}
 
 	int mtl_num = mesh_data.mtl_num;
@@ -274,8 +281,8 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
 	Attribute* attr = p_cy_mesh->attributes.add(ATTR_STD_UV, name);
 	ustring lightmap_name = ustring("lightmap_uv");
 	Attribute* lightmap_attr = p_cy_mesh->attributes.add(ATTR_STD_UV, lightmap_name);
-	float3* fdata = attr->data_float3();
-	float3* lightmap_data = lightmap_attr->data_float3();
+	float2* fdata = attr->data_float2();
+	float2* lightmap_data = lightmap_attr->data_float2();
 	for (int tri_i = 0; tri_i < triangle_num; ++tri_i)
 	{
 		int iv1 = index_array[tri_i * 3];
@@ -284,17 +291,17 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
 
 		if (uvs_array)
 		{
-			fdata[tri_i * 3] = make_float3(uvs_array[iv1].x, uvs_array[iv1].y, 1.0f);
-			fdata[tri_i * 3 + 1] = make_float3(uvs_array[iv2].x, uvs_array[iv2].y, 1.0f);
-			fdata[tri_i * 3 + 2] = make_float3(uvs_array[iv3].x, uvs_array[iv3].y, 1.0f);
+			fdata[tri_i * 3] = make_float2(uvs_array[iv1].x, uvs_array[iv1].y);
+			fdata[tri_i * 3 + 1] = make_float2(uvs_array[iv2].x, uvs_array[iv2].y);
+			//fdata[tri_i * 3 + 2] = make_float3(uvs_array[iv3].x, uvs_array[iv3].y, 1.0f);
 		}
 
 		if (lightmapuvs_array)
 		{
 			//assert(lightmapuvs_array[iv1].x < 1.1f && lightmapuvs_array[iv1].x > -0.1f);
-			lightmap_data[tri_i * 3] = make_float3(lightmapuvs_array[iv1].x, lightmapuvs_array[iv1].y, 1.0f);
-			lightmap_data[tri_i * 3 + 1] = make_float3(lightmapuvs_array[iv2].x, lightmapuvs_array[iv2].y, 1.0f);
-			lightmap_data[tri_i * 3 + 2] = make_float3(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y, 1.0f);
+			lightmap_data[tri_i * 3] = make_float2(lightmapuvs_array[iv1].x, lightmapuvs_array[iv1].y);
+			lightmap_data[tri_i * 3 + 1] = make_float2(lightmapuvs_array[iv2].x, lightmapuvs_array[iv2].y);
+			//lightmap_data[tri_i * 3 + 2] = make_float3(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y, 1.0f);
 		}
 	}
 

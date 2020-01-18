@@ -38,6 +38,8 @@ void fbx_add_default_shader(Scene* scene);
 Mesh* fbx_add_mesh(Scene* scene, const Transform& tfm);
 void create_mikk_tangent(Mesh* cycle_mesh);
 
+BufferParams &session_buffer_params();
+
 CCL_NAMESPACE_END
 
 #endif

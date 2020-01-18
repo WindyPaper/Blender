@@ -208,7 +208,7 @@ bool write_float_map(const float* pixels, int w, int h, int channels)
 	return true;
 }
 
-static BufferParams& session_buffer_params()
+BufferParams& session_buffer_params()
 {
   static BufferParams buffer_params;
   buffer_params.width = options.width;
@@ -685,7 +685,7 @@ static void scene_init()
 	options.scene->camera->matrix = matrix;
 
   //film pass
-  options.scene->film->display_pass = PASS_COMBINED;
+  options.scene->film->display_pass = PassType::PASS_COMBINED;
   options.scene->film->tag_passes_update(options.scene, session_buffer_params().passes);
   options.scene->film->tag_update(options.scene);
   options.scene->integrator->tag_update(options.scene);

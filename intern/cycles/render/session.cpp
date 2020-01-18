@@ -321,22 +321,23 @@ void Session::run_gpu()
             gpu_need_display_buffer_update_cond.wait(buffers_lock);
           }
         }
-      }      
+      }
+      else {
+        copy_to_display_buffer(tile_manager.state.sample);
+	  }
 
       if (!device->error_message().empty())
         progress.set_error(device->error_message());
 
       tiles_written = update_progressive_refine(progress.get_cancel());
 
-	  // Render result image call back 
-	  if (render_icb)
-      {
+      // Render result image call back
+      if (render_icb) {
         int w = tile_manager.state.buffer.full_width;
         int h = tile_manager.state.buffer.full_height;
         half *p_pixel_data = (half *)display->rgba_half.copy_from_device(0, w, h);
         render_icb(p_pixel_data, w, h, 0);
       }
-
 
       if (progress.get_cancel())
         break;
@@ -677,6 +678,7 @@ void Session::run_cpu()
 
       // Render result image call back
       if (render_icb) {
+        copy_to_display_buffer(tile_manager.state.sample);
         int w = tile_manager.state.buffer.full_width;
         int h = tile_manager.state.buffer.full_height;
         render_icb((half *)display->rgba_half.copy_from_device(0, w, h), w, h, 0);

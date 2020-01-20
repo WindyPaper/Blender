@@ -142,9 +142,9 @@ int create_unity2cycles_shader(Scene* scene, const CyclesMtlData *mtl_data)
 	TextureCoordinateNode* tex_uv_coord_node = new TextureCoordinateNode();
 	graph->add(tex_uv_coord_node);
 	MappingNode* tex_scale_mapping_node = new MappingNode();
-	//tex_scale_mapping_node->tex_mapping.scale.x = mtl_data->tiling_x;
-	//tex_scale_mapping_node->tex_mapping.scale.y = mtl_data->tiling_y;
-	//tex_scale_mapping_node->tex_mapping.type = tex_scale_mapping_node->tex_mapping.VECTOR;
+	tex_scale_mapping_node->scale.x = mtl_data->tiling_x;
+	tex_scale_mapping_node->scale.y = mtl_data->tiling_y;
+	tex_scale_mapping_node->type = NodeMappingType::NODE_MAPPING_TYPE_VECTOR;
 	graph->add(tex_scale_mapping_node);
 	
 	graph->connect(tex_uv_coord_node->output("UV"), tex_scale_mapping_node->input("Vector"));
@@ -178,6 +178,7 @@ int create_unity2cycles_shader(Scene* scene, const CyclesMtlData *mtl_data)
 	graph->add(pbr);
 
 	graph->connect(diff_img_node->output("Color"), pbr->input("Base Color"));
+	graph->connect(diff_img_node->output("Alpha"), pbr->input("Alpha"));
 
 	//for alpha blend in 2.7version
 	MixNode* mix_node = new MixNode();
@@ -293,7 +294,7 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
 		{
 			fdata[tri_i * 3] = make_float2(uvs_array[iv1].x, uvs_array[iv1].y);
 			fdata[tri_i * 3 + 1] = make_float2(uvs_array[iv2].x, uvs_array[iv2].y);
-			//fdata[tri_i * 3 + 2] = make_float3(uvs_array[iv3].x, uvs_array[iv3].y, 1.0f);
+			fdata[tri_i * 3 + 2] = make_float2(uvs_array[iv3].x, uvs_array[iv3].y);
 		}
 
 		if (lightmapuvs_array)
@@ -301,7 +302,7 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
 			//assert(lightmapuvs_array[iv1].x < 1.1f && lightmapuvs_array[iv1].x > -0.1f);
 			lightmap_data[tri_i * 3] = make_float2(lightmapuvs_array[iv1].x, lightmapuvs_array[iv1].y);
 			lightmap_data[tri_i * 3 + 1] = make_float2(lightmapuvs_array[iv2].x, lightmapuvs_array[iv2].y);
-			//lightmap_data[tri_i * 3 + 2] = make_float3(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y, 1.0f);
+			lightmap_data[tri_i * 3 + 2] = make_float2(lightmapuvs_array[iv3].x, lightmapuvs_array[iv3].y);
 		}
 	}
 

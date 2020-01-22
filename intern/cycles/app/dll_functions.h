@@ -1,6 +1,7 @@
 #pragma once
 #ifndef _DLL_FUNCTIONS_H_
 
+#include "cycles_standalone.h"
 #include "render/session.h"
 
 
@@ -29,6 +30,7 @@ extern "C"
 		int render_device;
 
 		int work_type; //RENDER / BAKDER
+    int enable_denoise;
 	};
 
 	struct CyclesMeshData
@@ -51,7 +53,7 @@ extern "C"
 		char mtl_tex_name[255];
 		char normal_tex_name[255];
 
-		bool is_transparent;
+		int is_transparent;
 		float tiling_x, tiling_y;
 		float offset_x, offset_y;
 		float* diffuse_color; //float3

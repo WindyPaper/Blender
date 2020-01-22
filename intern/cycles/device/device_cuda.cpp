@@ -215,6 +215,7 @@ class CUDADevice : public Device {
       if (error_msg == "") \
         error_msg = message; \
       fprintf(stderr, "%s\n", message.c_str()); \
+	  VLOG(1)<<message;	\
       /*cuda_abort();*/ \
       cuda_error_documentation(); \
     } \
@@ -805,7 +806,7 @@ class CUDADevice : public Device {
     size_t headroom = (is_texture) ? device_texture_headroom : device_working_headroom;
 
     size_t total = 0, free = 0;
-    cuMemGetInfo(&free, &total);
+    CUresult info_ret = (cuMemGetInfo(&free, &total));
 
     /* Move textures to host memory if needed. */
     if (!move_texture_to_host && !is_image && (size + headroom) >= free && can_map_host) {

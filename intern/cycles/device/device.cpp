@@ -375,7 +375,7 @@ Device *Device::create(DeviceInfo &info, Stats &stats, Profiler &profiler, bool 
 #ifdef WITH_CUDA
 		case DEVICE_CUDA:
 			if(device_cuda_init())
-				device = device_cuda_create(info, stats, profiler, false);
+				device = device_cuda_create(info, stats, profiler, background);
 			else
 				device = NULL;
 			break;

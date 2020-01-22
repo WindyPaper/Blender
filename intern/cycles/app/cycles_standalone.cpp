@@ -215,7 +215,9 @@ BufferParams& session_buffer_params()
   buffer_params.height = options.height;
   buffer_params.full_width = options.width;
   buffer_params.full_height = options.height;
-  Pass::add(PASS_COMBINED, buffer_params.passes);
+  buffer_params.denoising_data_pass = true;
+  Pass::add(PASS_COMBINED, buffer_params.passes, "Combined");
+  //Pass::add(PASS_DEPTH, buffer_params.passes, "Depth");
 
   return buffer_params;
 }
@@ -503,13 +505,22 @@ void fbx_add_default_shader(Scene* scene)
 	gra->add(bk_node);
 	gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
 
-	ColorNode* cb_node = new ColorNode();
-	cb_node->value = make_float3(0.8, 0.8, 0.8);
-	gra->add(cb_node);
-	gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+	//ColorNode* cb_node = new ColorNode();	
+	//cb_node->value = make_float3(0.8, 0.0, 0.0);
+	//gra->add(cb_node);
+	//gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+
+	EnvironmentTextureNode *env_node = new EnvironmentTextureNode();
+	env_node->filename = "E:/github_project/blender_fork/blender/build/bin/Debug/cycles_scene/rooitou_park_2k.hdr";
+	gra->add(env_node);
+	ClampNode *clamp_env_node = new ClampNode();
+	clamp_env_node->max = 8.0f;
+    gra->add(clamp_env_node);
+    gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
+    gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
 
 	ValueNode* v_node = new ValueNode();
-	v_node->value = 1.0;
+	v_node->value = 5.0f;
 	gra->add(v_node);
 	gra->connect(v_node->output("Value"), bk_node->input("Strength"));
 }

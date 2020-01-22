@@ -51,7 +51,7 @@ void util_logging_init(const char *argv0)
   snprintf(severity_fatal, sizeof(severity_fatal), "%d", google::GLOG_ERROR);
 
   google::InitGoogleLogging(argv0);
-  SetCommandLineOption("logtostderr", "1");
+  SetCommandLineOption("logtostderr", "0");
   if (!is_verbosity_set()) {
     SetCommandLineOption("v", "0");
   }
@@ -66,7 +66,7 @@ void util_logging_start()
 {
 #ifdef WITH_CYCLES_LOGGING
   using CYCLES_GFLAGS_NAMESPACE::SetCommandLineOption;
-  SetCommandLineOption("logtostderr", "1");
+  SetCommandLineOption("logtostderr", "0");
   if (!is_verbosity_set()) {
     SetCommandLineOption("v", "2");
   }

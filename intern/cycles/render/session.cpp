@@ -324,7 +324,7 @@ void Session::run_gpu()
       }
       else {
         copy_to_display_buffer(tile_manager.state.sample);
-	  }
+      }
 
       if (!device->error_message().empty())
         progress.set_error(device->error_message());
@@ -332,11 +332,11 @@ void Session::run_gpu()
       tiles_written = update_progressive_refine(progress.get_cancel());
 
       // Render result image call back
-      if (render_icb) {
+      if (render_icb && !params.background) {
         int w = tile_manager.state.buffer.full_width;
         int h = tile_manager.state.buffer.full_height;
         half *p_pixel_data = (half *)display->rgba_half.copy_from_device(0, w, h);
-        render_icb(p_pixel_data, w, h, 0);
+        render_icb(p_pixel_data, w, h, 0, get_progress());
       }
 
       if (progress.get_cancel())
@@ -677,11 +677,11 @@ void Session::run_cpu()
       thread_scoped_lock display_lock(display_mutex);
 
       // Render result image call back
-      if (render_icb) {
+      if (render_icb && !params.background) {
         copy_to_display_buffer(tile_manager.state.sample);
         int w = tile_manager.state.buffer.full_width;
         int h = tile_manager.state.buffer.full_height;
-        render_icb((half *)display->rgba_half.copy_from_device(0, w, h), w, h, 0);
+        render_icb((half *)display->rgba_half.copy_from_device(0, w, h), w, h, 0, get_progress());
       }
 
       if (delayed_reset.do_reset) {
@@ -1181,6 +1181,18 @@ int Session::get_max_closure_count()
   }
 
   return max_closure_global;
+}
+
+float Session::get_progress()
+{
+  if (!params.background) {
+    return progress.get_progress();
+  }
+  else {
+    int tile = progress.get_rendered_tiles();
+    int num_tiles = tile_manager.state.num_tiles;
+    return float(tile) / num_tiles;
+  }
 }
 
 CCL_NAMESPACE_END

@@ -44,7 +44,7 @@ void assign_session_specific(const int w,
       break;
   }
 
-  //bool list = false;
+  // bool list = false;
 
   vector<DeviceType> &types = Device::available_types();
 
@@ -146,7 +146,7 @@ static void denoise_render_cb(RenderTile &rtile)
   // update subpixel
   int curr_pixel_index = 0;
   for (int y = rtile.y; y < rtile.y + rtile.h; ++y) {
-    for (int x = rtile.x; x < rtile.x + rtile.w; ++x) {     
+    for (int x = rtile.x; x < rtile.x + rtile.w; ++x) {
       ccl::half *curr = unity_output_buffer + ((y * options.width) + x) * component;
       ccl::half4 in_color;
       float4 f4_color = make_float4(pixels[curr_pixel_index],
@@ -157,8 +157,8 @@ static void denoise_render_cb(RenderTile &rtile)
       memcpy(curr, &in_color.x, sizeof(ccl::half4));
 
       curr_pixel_index += component;
-	}
-  }  
+    }
+  }
 
   float progress = options.session->get_progress();
   options.session->render_icb(
@@ -416,6 +416,9 @@ DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls)
 DLL_EXPORT int unity_add_light(const char *name,
                                float intensity,
                                float radius,
+                               float angle,
+                               float size_x,
+                               float size_y,
                                float *color,
                                float *dir,
                                float *pos,
@@ -424,9 +427,12 @@ DLL_EXPORT int unity_add_light(const char *name,
   // create light
   Light *l = new Light();
   l->use_mis = true;
+  l->strength = make_float3(1.0f, 1.0f, 1.0f);
   l->dir = *(float3 *)dir;
   l->size = radius;
   l->co = *(float3 *)(pos);
+  l->spot_angle = DEG2RADF(angle);
+  l->angle = 0.0f;
 
   /*
   //The type of a Light.
@@ -441,6 +447,17 @@ DLL_EXPORT int unity_add_light(const char *name,
   }
   else if (type == 2) {
     l->type = LIGHT_POINT;
+  }
+  else if (type == 0) {
+    l->type = LIGHT_SPOT;
+  }
+  else if (type == 3) {
+    l->type = LIGHT_AREA;
+    l->size = 1.0f;
+    l->sizeu = size_x;
+    l->sizev = size_y;
+    l->axisu = transform_get_column(&l->tfm, 0);
+    l->axisv = transform_get_column(&l->tfm, 1);
   }
 
   // create light shader

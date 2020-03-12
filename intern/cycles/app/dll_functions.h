@@ -63,7 +63,7 @@ extern "C"
 
 	DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls);
 
-	DLL_EXPORT int unity_add_light(const char* name, float intensity, float radius, float* color, float* dir, float* pos, int type);
+	DLL_EXPORT int unity_add_light(const char* name, float intensity, float radius, float angle, float size_x, float size_y, float* color, float* dir, float* pos, int type);
 
 	DLL_EXPORT int bake_lightmap();
 

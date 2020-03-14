@@ -15,6 +15,7 @@ extern "C"
 		int height;
 		float* camera_pos;
 		float* euler_angle;
+    float fov;
 
 		int sample_count;
 	};
@@ -34,7 +35,7 @@ extern "C"
 	};
 
 	struct CyclesMeshData
-	{
+	{    
 		float* vertex_array;
 		float* uvs_array;
 		float* lightmapuvs_array;
@@ -59,11 +60,24 @@ extern "C"
 		float* diffuse_color; //float3
 	};
 
+  struct LightData {
+    char name[255];
+
+    float intensity;
+    float radius;
+    float angle;
+    float sizex, sizey;
+    float *color;
+    float *dir;
+    float *pos;
+    int type;
+  };
+
 	DLL_EXPORT bool init_cycles(CyclesInitOptions init_op);
 
 	DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls);
 
-	DLL_EXPORT int unity_add_light(const char* name, float intensity, float radius, float angle, float size_x, float size_y, float* color, float* dir, float* pos, int type);
+	DLL_EXPORT int unity_add_light(LightData light_data);
 
 	DLL_EXPORT int bake_lightmap();
 

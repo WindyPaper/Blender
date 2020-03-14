@@ -413,25 +413,16 @@ DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls)
   return 0;
 }
 
-DLL_EXPORT int unity_add_light(const char *name,
-                               float intensity,
-                               float radius,
-                               float angle,
-                               float size_x,
-                               float size_y,
-                               float *color,
-                               float *dir,
-                               float *pos,
-                               int type)
+DLL_EXPORT int unity_add_light(LightData light_data)
 {
   // create light
   Light *l = new Light();
   l->use_mis = true;
   l->strength = make_float3(1.0f, 1.0f, 1.0f);
-  l->dir = *(float3 *)dir;
-  l->size = radius;
-  l->co = *(float3 *)(pos);
-  l->spot_angle = DEG2RADF(angle);
+  l->dir = *(float3 *)light_data.dir;
+  l->size = light_data.radius;
+  l->co = *(float3 *)(light_data.pos);
+  l->spot_angle = DEG2RADF(light_data.angle);
   l->angle = 0.0f;
 
   /*
@@ -442,33 +433,42 @@ DLL_EXPORT int unity_add_light(const char *name,
   Area = 3,
   Disc = 4
   */
-  if (type == 1) {
-    l->type = LIGHT_DISTANT;
+  if (light_data.type == 1) {
+    l->type = LightType::LIGHT_DISTANT;
   }
-  else if (type == 2) {
-    l->type = LIGHT_POINT;
+  else if (light_data.type == 2) {
+    l->type = LightType::LIGHT_POINT;
   }
-  else if (type == 0) {
-    l->type = LIGHT_SPOT;
+  else if (light_data.type == 0) {
+    l->type = LightType::LIGHT_SPOT;
   }
-  else if (type == 3) {
-    l->type = LIGHT_AREA;
+  else if (light_data.type == 3) {
+    l->type = LightType::LIGHT_AREA;
     l->size = 1.0f;
-    l->sizeu = size_x;
-    l->sizev = size_y;
+    l->sizeu = light_data.sizex;
+    l->sizev = light_data.sizey;
     l->axisu = transform_get_column(&l->tfm, 0);
     l->axisv = transform_get_column(&l->tfm, 1);
+  }
+  else if (light_data.type == 4) {
+    l->type = LightType::LIGHT_AREA;
+    //l->size = 1.0f;
+    l->sizeu = light_data.sizex;
+    l->sizev = l->sizeu;
+    l->axisu = transform_get_column(&l->tfm, 0);
+    l->axisv = transform_get_column(&l->tfm, 1);
+    l->round = true;
   }
 
   // create light shader
   ShaderGraph *graph = new ShaderGraph();
   EmissionNode *emission = new EmissionNode();
-  emission->color = *(float3 *)color;
-  emission->strength = intensity;
+  emission->color = *(float3 *)light_data.color;
+  emission->strength = light_data.intensity;
   graph->add(emission);
   graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
   Shader *p_lshader = new Shader();
-  p_lshader->name = name;
+  p_lshader->name = light_data.name;
   p_lshader->graph = graph;
   options.scene->shaders.push_back(p_lshader);
 
@@ -512,6 +512,9 @@ DLL_EXPORT int interactive_pt_rendering(UnityRenderOptions u3d_render_options,
   options.scene->camera->compute_auto_viewplane();
   options.scene->camera->need_update = true;
   options.scene->camera->need_device_update = true;
+  //vertical fov
+  float vertical_rad = DEG2RADF(u3d_render_options.fov);  
+  options.scene->camera->fov = vertical_rad;
 
   options.session_params.samples = u3d_render_options.sample_count;
   // options.session->reset(session_buffer_params(), options.session_params.samples);

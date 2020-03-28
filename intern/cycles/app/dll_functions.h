@@ -18,6 +18,8 @@ extern "C"
     float fov;
 
 		int sample_count;
+
+    char hdr_texture_path[255];
 	};
 
 	struct CyclesInitOptions

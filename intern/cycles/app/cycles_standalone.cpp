@@ -500,29 +500,29 @@ void fbx_add_default_shader(Scene* scene)
 		scene->default_empty = shader;
 	}
 
-	ShaderGraph *gra = scene->default_background->graph;
-	BackgroundNode* bk_node = new BackgroundNode();
-	gra->add(bk_node);
-	gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
+	//ShaderGraph *gra = scene->default_background->graph;
+	//BackgroundNode* bk_node = new BackgroundNode();
+	//gra->add(bk_node);
+	//gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
 
-	//ColorNode* cb_node = new ColorNode();	
-	//cb_node->value = make_float3(0.8, 0.0, 0.0);
-	//gra->add(cb_node);
-	//gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+	////ColorNode* cb_node = new ColorNode();	
+	////cb_node->value = make_float3(0.8, 0.0, 0.0);
+	////gra->add(cb_node);
+	////gra->connect(cb_node->output("Color"), bk_node->input("Color"));
 
-	EnvironmentTextureNode *env_node = new EnvironmentTextureNode();
-	env_node->filename = "E:/github_project/blender_fork/blender/build/bin/Debug/cycles_scene/rooitou_park_2k.hdr";
-	gra->add(env_node);
-	ClampNode *clamp_env_node = new ClampNode();
-	clamp_env_node->max = 8.0f;
-    gra->add(clamp_env_node);
-    gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
-    gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
+	//EnvironmentTextureNode *env_node = new EnvironmentTextureNode();
+	//env_node->filename = "E:/github_project/blender_fork/blender/build/bin/Debug/cycles_scene/rooitou_park_2k.hdr";
+	//gra->add(env_node);
+	//ClampNode *clamp_env_node = new ClampNode();
+	//clamp_env_node->max = 8.0f;
+ //   gra->add(clamp_env_node);
+ //   gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
+ //   gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
 
-	ValueNode* v_node = new ValueNode();
-	v_node->value = 5.0f;
-	gra->add(v_node);
-	gra->connect(v_node->output("Value"), bk_node->input("Strength"));
+	//ValueNode* v_node = new ValueNode();
+	//v_node->value = 0.0f;
+	//gra->add(v_node);
+	//gra->connect(v_node->output("Value"), bk_node->input("Strength"));
 }
 
 static int TranslateMaterialCycles(Scene* scene, const aiMaterial* ai_mat, const std::string &dir_name)

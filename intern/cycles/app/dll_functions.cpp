@@ -204,6 +204,9 @@ int create_unity2cycles_shader(Scene *scene, const CyclesMtlData *mtl_data)
 {
   ShaderGraph *graph = new ShaderGraph();
 
+  PrincipledBsdfNode *pbr = new PrincipledBsdfNode();
+  graph->add(pbr);
+
   TextureCoordinateNode *tex_uv_coord_node = new TextureCoordinateNode();
   graph->add(tex_uv_coord_node);
   MappingNode *tex_scale_mapping_node = new MappingNode();
@@ -219,48 +222,45 @@ int create_unity2cycles_shader(Scene *scene, const CyclesMtlData *mtl_data)
   graph->add(diff_img_node);
   graph->connect(tex_scale_mapping_node->output("Vector"), diff_img_node->input("Vector"));
 
-  ImageTextureNode *mtl_img_node = new ImageTextureNode();
-  mtl_img_node->filename = mtl_data->mtl_tex_name;
-  mtl_img_node->colorspace = u_colorspace_raw;
-  graph->add(mtl_img_node);
-  graph->connect(tex_scale_mapping_node->output("Vector"), mtl_img_node->input("Vector"));
+  if (mtl_data->mtl_tex_name[0] != '\0') {
+    ImageTextureNode *mtl_img_node = new ImageTextureNode();
+    mtl_img_node->filename = mtl_data->mtl_tex_name;
+    mtl_img_node->colorspace = u_colorspace_raw;
+    graph->add(mtl_img_node);
+    graph->connect(tex_scale_mapping_node->output("Vector"), mtl_img_node->input("Vector"));
 
-  SeparateRGBNode *mtl_separate = new SeparateRGBNode();
-  graph->add(mtl_separate);
-  graph->connect(mtl_img_node->output("Color"), mtl_separate->input("Image"));
-  MathNode *mtl_math_sub = new MathNode();
-  graph->add(mtl_math_sub);
-  mtl_math_sub->type = NodeMathType::NODE_MATH_SUBTRACT;
-  mtl_math_sub->value1 = 1.0f;
-  graph->connect(mtl_img_node->output("Alpha"), mtl_math_sub->input("Value2"));
+    SeparateRGBNode *mtl_separate = new SeparateRGBNode();
+    graph->add(mtl_separate);
+    graph->connect(mtl_img_node->output("Color"), mtl_separate->input("Image"));
+    MathNode *mtl_math_sub = new MathNode();
+    graph->add(mtl_math_sub);
+    mtl_math_sub->type = NodeMathType::NODE_MATH_SUBTRACT;
+    mtl_math_sub->value1 = 1.0f;
+    graph->connect(mtl_img_node->output("Alpha"), mtl_math_sub->input("Value2"));
 
-  ImageTextureNode *normal_img_node = new ImageTextureNode();
-  normal_img_node->filename = mtl_data->normal_tex_name;
-  // normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
-  normal_img_node->colorspace = u_colorspace_raw;
-  graph->add(normal_img_node);
-  graph->connect(tex_scale_mapping_node->output("Vector"), normal_img_node->input("Vector"));
+    graph->connect(mtl_math_sub->output("Value"), pbr->input("Roughness"));
+    graph->connect(mtl_separate->output("R"), pbr->input("Metallic"));
+  }
 
-  NormalMapNode *change_to_normalmap_node = new NormalMapNode();
-  change_to_normalmap_node->space = NODE_NORMAL_MAP_TANGENT;
-  graph->add(change_to_normalmap_node);
-  // change_to_normalmap_node->normal_osl = make_float3(1, 0, 0);
-  graph->connect(normal_img_node->output("Color"), change_to_normalmap_node->input("Color"));
+  if (mtl_data->normal_tex_name[0] != '\0') {
+    ImageTextureNode *normal_img_node = new ImageTextureNode();
+    normal_img_node->filename = mtl_data->normal_tex_name;
+    // normal_img_node->color_space = NODE_COLOR_SPACE_NONE;
+    normal_img_node->colorspace = u_colorspace_raw;
+    graph->add(normal_img_node);
+    graph->connect(tex_scale_mapping_node->output("Vector"), normal_img_node->input("Vector"));
 
-  // DiffuseBsdfNode* diffuse = new DiffuseBsdfNode(); Only for baking
-  PrincipledBsdfNode *pbr = new PrincipledBsdfNode();
-  // diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
-  graph->add(pbr);
+    NormalMapNode *change_to_normalmap_node = new NormalMapNode();
+    change_to_normalmap_node->space = NODE_NORMAL_MAP_TANGENT;
+    graph->add(change_to_normalmap_node);
+    // change_to_normalmap_node->normal_osl = make_float3(1, 0, 0);
+    graph->connect(normal_img_node->output("Color"), change_to_normalmap_node->input("Color"));
+    // not comment for baking
+    graph->connect(change_to_normalmap_node->output("Normal"), pbr->input("Normal"));
+  }
 
   graph->connect(diff_img_node->output("Color"), pbr->input("Base Color"));
   graph->connect(diff_img_node->output("Alpha"), pbr->input("Alpha"));
-  graph->connect(mtl_math_sub->output("Value"), pbr->input("Roughness"));
-  graph->connect(mtl_separate->output("R"), pbr->input("Metallic"));
-  // pbr->metallic = 1.0f;
-  // pbr->roughness = 0.5f;
-
-  // not comment for baking
-  graph->connect(change_to_normalmap_node->output("Normal"), pbr->input("Normal"));
 
   graph->connect(pbr->output("BSDF"), graph->output()->input("Surface"));
 
@@ -452,7 +452,7 @@ DLL_EXPORT int unity_add_light(LightData light_data)
   }
   else if (light_data.type == 4) {
     l->type = LightType::LIGHT_AREA;
-    //l->size = 1.0f;
+    // l->size = 1.0f;
     l->sizeu = light_data.sizex;
     l->sizev = l->sizeu;
     l->axisu = transform_get_column(&l->tfm, 0);
@@ -488,6 +488,51 @@ DLL_EXPORT int bake_lightmap()
   return 0;
 }
 
+void set_sky_light_hdr(Scene *scene, const std::string &hdr_path)
+{
+  if (hdr_path.empty())
+    return;
+
+  ShaderGraph *gra = scene->default_background->graph;
+  BackgroundNode *bk_node = new BackgroundNode();
+  gra->add(bk_node);
+  gra->connect(bk_node->output("Background"), gra->output()->input("Surface"));
+
+  // ColorNode* cb_node = new ColorNode();
+  // cb_node->value = make_float3(0.8, 0.0, 0.0);
+  // gra->add(cb_node);
+  // gra->connect(cb_node->output("Color"), bk_node->input("Color"));
+
+  //Rotate sky hdr image
+  TextureCoordinateNode *tex_uv_coord_node = new TextureCoordinateNode();
+  gra->add(tex_uv_coord_node);
+  MappingNode *tex_scale_mapping_node = new MappingNode();
+  
+  tex_scale_mapping_node->type = NodeMappingType::NODE_MAPPING_TYPE_POINT;
+  tex_scale_mapping_node->rotation.x = DEG2RADF(90.0f);
+  gra->add(tex_scale_mapping_node);
+
+  gra->connect(tex_uv_coord_node->output("Generated"), tex_scale_mapping_node->input("Vector"));
+
+  
+
+  EnvironmentTextureNode *env_node = new EnvironmentTextureNode();
+  env_node->filename = hdr_path;      
+  gra->add(env_node);
+  ClampNode *clamp_env_node = new ClampNode();
+  clamp_env_node->max = 10.0f;
+  gra->add(clamp_env_node);
+  gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
+  gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
+
+  gra->connect(tex_scale_mapping_node->output("Vector"), env_node->input("Vector"));
+
+  ValueNode *v_node = new ValueNode();
+  v_node->value = 1.0f;
+  gra->add(v_node);
+  gra->connect(v_node->output("Value"), bk_node->input("Strength"));
+}
+
 // typedef void (*render_image_cb)(const char* data, const int w, const int h, const int
 // data_type);
 
@@ -512,12 +557,13 @@ DLL_EXPORT int interactive_pt_rendering(UnityRenderOptions u3d_render_options,
   options.scene->camera->compute_auto_viewplane();
   options.scene->camera->need_update = true;
   options.scene->camera->need_device_update = true;
-  //vertical fov
-  float vertical_rad = DEG2RADF(u3d_render_options.fov);  
+  // vertical fov
+  float vertical_rad = DEG2RADF(u3d_render_options.fov);
   options.scene->camera->fov = vertical_rad;
 
   options.session_params.samples = u3d_render_options.sample_count;
   // options.session->reset(session_buffer_params(), options.session_params.samples);
+  set_sky_light_hdr(options.session->scene, u3d_render_options.hdr_texture_path);
 
   start_render_image();
   options.session->render_icb = icb;

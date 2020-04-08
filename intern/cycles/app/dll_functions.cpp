@@ -217,10 +217,22 @@ int create_unity2cycles_shader(Scene *scene, const CyclesMtlData *mtl_data)
 
   graph->connect(tex_uv_coord_node->output("UV"), tex_scale_mapping_node->input("Vector"));
 
-  ImageTextureNode *diff_img_node = new ImageTextureNode();
-  diff_img_node->filename = mtl_data->diffuse_tex_name;
-  graph->add(diff_img_node);
-  graph->connect(tex_scale_mapping_node->output("Vector"), diff_img_node->input("Vector"));
+  if (mtl_data->diffuse_tex_name[0] != '\0') {
+    ImageTextureNode *diff_img_node = new ImageTextureNode();
+    diff_img_node->filename = mtl_data->diffuse_tex_name;
+    graph->add(diff_img_node);
+    graph->connect(tex_scale_mapping_node->output("Vector"), diff_img_node->input("Vector"));
+
+    graph->connect(diff_img_node->output("Color"), pbr->input("Base Color"));
+    graph->connect(diff_img_node->output("Alpha"), pbr->input("Alpha"));
+  }
+  else {
+    ColorNode *color = new ColorNode();
+    color->value = make_float3(
+        mtl_data->diffuse_color[0], mtl_data->diffuse_color[1], mtl_data->diffuse_color[2]);
+    graph->add(color);
+    graph->connect(color->output("Color"), pbr->input("Base Color"));
+  }
 
   if (mtl_data->mtl_tex_name[0] != '\0') {
     ImageTextureNode *mtl_img_node = new ImageTextureNode();
@@ -259,9 +271,6 @@ int create_unity2cycles_shader(Scene *scene, const CyclesMtlData *mtl_data)
     graph->connect(change_to_normalmap_node->output("Normal"), pbr->input("Normal"));
   }
 
-  graph->connect(diff_img_node->output("Color"), pbr->input("Base Color"));
-  graph->connect(diff_img_node->output("Alpha"), pbr->input("Alpha"));
-
   graph->connect(pbr->output("BSDF"), graph->output()->input("Surface"));
 
   Shader *shader = new Shader();
@@ -272,6 +281,32 @@ int create_unity2cycles_shader(Scene *scene, const CyclesMtlData *mtl_data)
   shader->tag_update(scene);
 
   return scene->shaders.size() - 1;
+}
+
+static void create_default_scene()
+{
+  Scene *scene = new Scene(options.scene_params, options.session->device);
+  options.scene = scene;
+  options.session->scene = scene;
+
+  /* Calculate Viewplane */
+  options.scene->camera->compute_auto_viewplane();
+  Transform matrix;
+
+  matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
+  options.scene->camera->matrix = matrix;
+
+  fbx_add_default_shader(scene);
+
+  // film pass
+  options.scene->film->display_pass = PassType::PASS_COMBINED;
+  options.scene->film->tag_passes_update(options.scene, session_buffer_params().passes);
+  options.scene->film->tag_update(options.scene);
+  options.scene->integrator->tag_update(options.scene);
+
+  options.scene->film->denoising_data_pass = true;
+  options.scene->film->denoising_clean_pass = false;
+  options.scene->film->denoising_flags = DENOISING_CLEAN_ALL_PASSES;
 }
 
 static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesMtlData *mtls)
@@ -285,32 +320,11 @@ static void internal_custom_scene(const CyclesMeshData &mesh_data, const CyclesM
   const int *index_array = mesh_data.index_array;
   const int *mat_index = mesh_data.mat_index;
   const int triangle_num = mesh_data.triangle_num;
-
-  Scene *scene = options.scene;
-  if (scene == NULL) {
-    scene = new Scene(options.scene_params, options.session->device);
-    options.scene = scene;
-    options.session->scene = scene;
-
-    /* Calculate Viewplane */
-    options.scene->camera->compute_auto_viewplane();
-    Transform matrix;
-
-    matrix = transform_translate(make_float3(0.0f, 2.0f, -10.0f));
-    options.scene->camera->matrix = matrix;
-
-    fbx_add_default_shader(scene);
-
-    // film pass
-    options.scene->film->display_pass = PassType::PASS_COMBINED;
-    options.scene->film->tag_passes_update(options.scene, session_buffer_params().passes);
-    options.scene->film->tag_update(options.scene);
-    options.scene->integrator->tag_update(options.scene);
-
-    options.scene->film->denoising_data_pass = true;
-    options.scene->film->denoising_clean_pass = false;
-    options.scene->film->denoising_flags = DENOISING_CLEAN_ALL_PASSES;
+  
+  if (options.scene == NULL) {
+    create_default_scene();
   }
+  Scene *scene = options.scene;
 
   int mtl_num = mesh_data.mtl_num;
   std::vector<int> cycles_shader_indexs(mtl_num);
@@ -415,6 +429,11 @@ DLL_EXPORT int unity_add_mesh(CyclesMeshData mesh_data, CyclesMtlData *mtls)
 
 DLL_EXPORT int unity_add_light(LightData light_data)
 {
+  Scene *scene = options.scene;
+  if (scene == NULL) {
+    create_default_scene();
+  }
+
   // create light
   Light *l = new Light();
   l->use_mis = true;
@@ -503,27 +522,48 @@ void set_sky_light_hdr(Scene *scene, const std::string &hdr_path)
   // gra->add(cb_node);
   // gra->connect(cb_node->output("Color"), bk_node->input("Color"));
 
-  //Rotate sky hdr image
+  // Rotate sky hdr image
   TextureCoordinateNode *tex_uv_coord_node = new TextureCoordinateNode();
   gra->add(tex_uv_coord_node);
   MappingNode *tex_scale_mapping_node = new MappingNode();
-  
+
   tex_scale_mapping_node->type = NodeMappingType::NODE_MAPPING_TYPE_POINT;
   tex_scale_mapping_node->rotation.x = DEG2RADF(90.0f);
   gra->add(tex_scale_mapping_node);
 
   gra->connect(tex_uv_coord_node->output("Generated"), tex_scale_mapping_node->input("Vector"));
 
-  
-
   EnvironmentTextureNode *env_node = new EnvironmentTextureNode();
-  env_node->filename = hdr_path;      
+  env_node->filename = hdr_path;
   gra->add(env_node);
-  ClampNode *clamp_env_node = new ClampNode();
-  clamp_env_node->max = 10.0f;
-  gra->add(clamp_env_node);
-  gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
-  gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
+  ClampNode *clamp_env_node_r = new ClampNode();
+  clamp_env_node_r->max = 500.0f;
+  gra->add(clamp_env_node_r);
+  ClampNode *clamp_env_node_g = new ClampNode();
+  clamp_env_node_g->max = 500.0f;
+  gra->add(clamp_env_node_g);
+  ClampNode *clamp_env_node_b = new ClampNode();
+  clamp_env_node_b->max = 500.0f;
+  gra->add(clamp_env_node_b);
+
+  SeparateRGBNode *sep_rgb_node = new SeparateRGBNode();
+  gra->add(sep_rgb_node);
+  gra->connect(env_node->output("Color"), sep_rgb_node->input("Image"));
+  gra->connect(sep_rgb_node->output("R"), clamp_env_node_r->input("Value"));
+  gra->connect(sep_rgb_node->output("G"), clamp_env_node_g->input("Value"));
+  gra->connect(sep_rgb_node->output("B"), clamp_env_node_b->input("Value"));
+
+  // merge
+  CombineRGBNode *combine_rgb_node = new CombineRGBNode();
+  gra->add(combine_rgb_node);
+  gra->connect(clamp_env_node_r->output("Result"), combine_rgb_node->input("R"));
+  gra->connect(clamp_env_node_g->output("Result"), combine_rgb_node->input("G"));
+  gra->connect(clamp_env_node_b->output("Result"), combine_rgb_node->input("B"));
+
+  // gra->connect(env_node->output("Color"), clamp_env_node->input("Value"));
+  // gra->connect(clamp_env_node->output("Result"), bk_node->input("Color"));
+  // gra->connect(env_node->output("Color"), bk_node->input("Color"));
+  gra->connect(combine_rgb_node->output("Image"), bk_node->input("Color"));
 
   gra->connect(tex_scale_mapping_node->output("Vector"), env_node->input("Vector"));
 
